@@ -1,0 +1,73 @@
+/* 饭搭常用mixin */
+@use './variables.scss' as *;
+@mixin fd-card {
+  background: $fd-card-bg;
+  border-radius: $fd-radius;
+  box-shadow: $fd-shadow;
+  padding: $fd-space-md;
+}
+
+@mixin fd-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin fd-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin fd-flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+@mixin fd-btn($bg: $fd-primary, $color: #fff) {
+  background: $bg;
+  color: $color;
+  border: none;
+  border-radius: $fd-radius-round;
+  padding: 16rpx 48rpx;
+  font-size: $fd-font-base;
+  font-weight: 600;
+  text-align: center;
+  &:active {
+    opacity: 0.85;
+    transform: scale(0.97);
+  }
+}
+
+@mixin fd-tag($bg: $fd-primary, $color: #fff) {
+  display: inline-block;
+  background: $bg;
+  color: $color;
+  font-size: $fd-font-xs;
+  padding: 4rpx 16rpx;
+  border-radius: $fd-radius-round;
+}
+
+@mixin fd-page {
+  min-height: 100vh;
+  background: $fd-bg;
+  padding-bottom: 140rpx;
+}
+
+@mixin fd-title {
+  font-size: $fd-font-lg;
+  font-weight: 700;
+  color: $fd-text;
+}
+
+@mixin fd-ellipsis($lines: 1) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  @if $lines == 1 {
+    white-space: nowrap;
+  } @else {
+    display: -webkit-box;
+    -webkit-line-clamp: $lines;
+    -webkit-box-orient: vertical;
+  }
+}

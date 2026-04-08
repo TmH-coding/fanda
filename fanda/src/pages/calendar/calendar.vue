@@ -1,0 +1,223 @@
+<template>
+  <view class="fd-page">
+    <fd-nav-bar title="饮食日历" />
+
+    <!-- 月份切换 -->
+    <view class="month-bar">
+      <view class="month-btn" @tap="prevMonth"><text>◀</text></view>
+      <text class="month-title">{{ year }}年{{ month }}月</text>
+      <view class="month-btn" @tap="nextMonth"><text>▶</text></view>
+    </view>
+
+    <!-- 星期头 -->
+    <view class="week-header">
+      <text v-for="d in weekDays" :key="d" class="week-day">{{ d }}</text>
+    </view>
+
+    <!-- 日历网格 -->
+    <view class="calendar-grid">
+      <view v-for="(day, i) in calendarDays" :key="i" class="day-cell" :class="{ 'day-cell--today': day.isToday, 'day-cell--empty': !day.date }" @tap="day.date && selectDay(day.date)">
+        <text v-if="day.date" class="day-num">{{ day.day }}</text>
+        <view v-if="day.hasRecord" class="day-dot"></view>
+      </view>
+    </view>
+
+    <!-- 选中日期的记录 -->
+    <view class="records-section">
+      <text class="records-title">{{ selectedDate }} 用餐记录</text>
+      <view v-if="dayRecords.length === 0" class="records-empty">
+        <fd-empty icon="📝" text="这天还没有记录哦" btn-text="去记录" @action="goRecord" />
+      </view>
+      <view v-for="record in dayRecords" :key="record.id" class="record-card fd-card">
+        <view class="record-header">
+          <text class="record-meal">{{ mealLabel(record.mealType) }}</text>
+          <text class="record-cost">¥{{ record.cost }}</text>
+        </view>
+        <text class="record-food">{{ record.foodName }}</text>
+        <view v-if="record.nutrition" class="record-tags">
+          <text v-for="n in record.nutrition" :key="n" class="fd-tag--accent">{{ nutritionLabel(n) }}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRecordStore } from '@/stores/modules/record'
+import { today, mealTypeLabel, getDaysInMonth, getFirstDayOfWeek } from '@/utils/date'
+import { NUTRITION_TYPES } from '@/config/constants'
+import FdNavBar from '@/components/common/fd-nav-bar.vue'
+import FdEmpty from '@/components/common/fd-empty.vue'
+
+const recordStore = useRecordStore()
+
+const now = new Date()
+const year = ref(now.getFullYear())
+const month = ref(now.getMonth() + 1)
+const selectedDate = ref(today())
+const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+
+const calendarDays = computed(() => {
+  const days = getDaysInMonth(year.value, month.value)
+  const firstDay = getFirstDayOfWeek(year.value, month.value)
+  const todayStr = today()
+  const result = []
+
+  for (let i = 0; i < firstDay; i++) {
+    result.push({ date: null, day: '', isToday: false, hasRecord: false })
+  }
+
+  const monthStr = String(month.value).padStart(2, '0')
+  for (let d = 1; d <= days; d++) {
+    const dateStr = `${year.value}-${monthStr}-${String(d).padStart(2, '0')}`
+    const hasRecord = recordStore.getByDate(dateStr).length > 0
+    result.push({
+      date: dateStr,
+      day: d,
+      isToday: dateStr === todayStr,
+      hasRecord,
+    })
+  }
+  return result
+})
+
+const dayRecords = computed(() => {
+  return recordStore.getByDate(selectedDate.value)
+})
+
+function mealLabel(type) { return mealTypeLabel(type) }
+
+function nutritionLabel(key) {
+  const found = NUTRITION_TYPES.find((n) => n.key === key)
+  return found ? found.label : key
+}
+
+function selectDay(date) { selectedDate.value = date }
+
+function prevMonth() {
+  if (month.value === 1) { year.value--; month.value = 12 }
+  else month.value--
+}
+function nextMonth() {
+  if (month.value === 12) { year.value++; month.value = 1 }
+  else month.value++
+}
+function goRecord() {
+  uni.switchTab({ url: '/pages/index/index' })
+}
+
+onMounted(async () => {
+  await recordStore.load()
+})
+</script>
+
+<style lang="scss" scoped>
+.month-bar {
+  @include fd-flex-center;
+  padding: $fd-space-base;
+  gap: $fd-space-lg;
+}
+.month-btn {
+  @include fd-flex-center;
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background: $fd-card-bg;
+  box-shadow: $fd-shadow;
+  &:active { opacity: 0.7; }
+}
+.month-title {
+  font-size: $fd-font-lg;
+  font-weight: 700;
+  color: $fd-text;
+}
+
+.week-header {
+  display: flex;
+  padding: 0 $fd-space-sm;
+}
+.week-day {
+  flex: 1;
+  text-align: center;
+  font-size: $fd-font-sm;
+  color: $fd-text-light;
+  padding: $fd-space-xs 0;
+}
+
+.calendar-grid {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0 $fd-space-sm;
+}
+.day-cell {
+  width: calc(100% / 7);
+  aspect-ratio: 1;
+  @include fd-flex-column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+
+  &--today {
+    .day-num {
+      background: $fd-primary;
+      color: #fff;
+      border-radius: 50%;
+      width: 56rpx;
+      height: 56rpx;
+      line-height: 56rpx;
+      text-align: center;
+    }
+  }
+}
+.day-num {
+  font-size: $fd-font-base;
+  color: $fd-text;
+}
+.day-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: $fd-primary;
+  margin-top: 4rpx;
+}
+
+.records-section {
+  padding: $fd-space-base $fd-space-md;
+}
+.records-title {
+  font-size: $fd-font-md;
+  font-weight: 700;
+  color: $fd-text;
+  margin-bottom: $fd-space-sm;
+  display: block;
+}
+
+.record-card {
+  margin-bottom: $fd-space-sm;
+}
+.record-header {
+  @include fd-flex-between;
+  margin-bottom: $fd-space-xs;
+}
+.record-meal {
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+}
+.record-cost {
+  font-size: $fd-font-base;
+  font-weight: 700;
+  color: $fd-primary;
+}
+.record-food {
+  font-size: $fd-font-md;
+  font-weight: 600;
+  color: $fd-text;
+  display: block;
+  margin-bottom: $fd-space-xs;
+}
+.record-tags {
+  display: flex;
+  gap: $fd-space-xs;
+}
+</style>

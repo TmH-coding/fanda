@@ -1,0 +1,73 @@
+// 成就定义
+export const achievements = [
+  {
+    id: 'first_record',
+    name: '初来乍到',
+    description: '完成第一次用餐记录',
+    icon: '🎉',
+    condition: (stats) => stats.totalRecords >= 1,
+  },
+  {
+    id: 'streak_3',
+    name: '小小坚持',
+    description: '连续记录3天',
+    icon: '🔥',
+    condition: (stats) => stats.streak >= 3,
+  },
+  {
+    id: 'streak_7',
+    name: '饮食达人',
+    description: '连续记录7天',
+    icon: '⭐',
+    condition: (stats) => stats.streak >= 7,
+  },
+  {
+    id: 'streak_30',
+    name: '自律之王',
+    description: '连续记录30天',
+    icon: '👑',
+    condition: (stats) => stats.streak >= 30,
+  },
+  {
+    id: 'budget_master',
+    name: '省钱高手',
+    description: '连续一周不超预算',
+    icon: '💰',
+    condition: (stats) => stats.budgetWeekStreak >= 7,
+  },
+  {
+    id: 'explorer_10',
+    name: '美食探险家',
+    description: '尝试10种不同的菜品',
+    icon: '🗺️',
+    condition: (stats) => stats.uniqueFoods >= 10,
+  },
+  {
+    id: 'explorer_30',
+    name: '味蕾冒险家',
+    description: '尝试30种不同的菜品',
+    icon: '🌍',
+    condition: (stats) => stats.uniqueFoods >= 30,
+  },
+  {
+    id: 'collector_20',
+    name: '收藏达人',
+    description: '收藏20个喜欢的菜品',
+    icon: '❤️',
+    condition: (stats) => stats.favorites >= 20,
+  },
+  {
+    id: 'early_bird',
+    name: '早起的鸟儿',
+    description: '记录10次早餐',
+    icon: '🌅',
+    condition: (stats) => stats.breakfastCount >= 10,
+  },
+  {
+    id: 'social_butterfly',
+    name: '社交蝴蝶',
+    description: '参加5次拼饭',
+    icon: '🦋',
+    condition: (stats) => stats.socialJoined >= 5,
+  },
+]
