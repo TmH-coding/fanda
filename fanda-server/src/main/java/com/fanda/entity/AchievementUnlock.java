@@ -1,6 +1,8 @@
 package com.fanda.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,20 +12,15 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity
-@Table(name = "fd_achievement_unlock")
+@TableName("fd_achievement_unlock")
 public class AchievementUnlock {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(name = "achievement_id", length = 50, nullable = false)
     private String achievementId;
 
-    @Column(name = "unlocked_at")
     private LocalDateTime unlockedAt;
 }

@@ -1,7 +1,8 @@
 package com.fanda.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,19 +10,13 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity
-@Table(name = "fd_record_nutrition")
+@TableName("fd_record_nutrition")
 public class RecordNutrition {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Column(name = "nutrition_type", length = 20)
-    private String nutritionType;
+    private Long recordId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "record_id")
-    @JsonIgnore
-    private MealRecord mealRecord;
+    private String nutritionType;
 }

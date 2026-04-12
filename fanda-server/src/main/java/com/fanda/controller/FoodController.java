@@ -1,13 +1,13 @@
 package com.fanda.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.dto.request.FoodCreateRequest;
 import com.fanda.dto.response.ApiResponse;
 import com.fanda.dto.response.FoodItemResponse;
 import com.fanda.entity.*;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
-import com.fanda.repository.FoodItemRepository;
-import com.fanda.repository.UserRepository;
+import com.fanda.mapper.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -24,8 +24,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FoodController {
 
-    private final FoodItemRepository foodItemRepository;
-    private final UserRepository userRepository;
+    private final FoodItemMapper foodItemMapper;
+    private final FoodTagMapper foodTagMapper;
+    private final FoodNutritionMapper foodNutritionMapper;
+    private final FoodAllergenMapper foodAllergenMapper;
+    private final FoodMealTimeMapper foodMealTimeMapper;
+    private final UserMapper userMapper;
 
     @GetMapping
     public ApiResponse<List<FoodItemResponse>> list(
@@ -36,26 +40,34 @@ public class FoodController {
         List<FoodItem> foods;
 
         if (keyword != null && !keyword.isBlank()) {
-            foods = foodItemRepository.findByNameContaining(keyword);
+            foods = foodItemMapper.selectList(
+                    new LambdaQueryWrapper<FoodItem>().like(FoodItem::getName, keyword));
         } else if (category != null && !category.isBlank()) {
-            foods = foodItemRepository.findByCategory(category);
+            foods = foodItemMapper.selectList(
+                    new LambdaQueryWrapper<FoodItem>().eq(FoodItem::getCategory, category));
         } else if (authentication != null) {
             Long userId = getCurrentUserId(authentication);
-            foods = foodItemRepository.findByIsSystemTrueOrUserId(userId);
+            foods = foodItemMapper.selectList(
+                    new LambdaQueryWrapper<FoodItem>()
+                            .eq(FoodItem::getIsSystem, true)
+                            .or().eq(FoodItem::getUserId, userId));
         } else {
-            foods = foodItemRepository.findByIsSystemTrueOrUserId(null);
+            foods = foodItemMapper.selectList(
+                    new LambdaQueryWrapper<FoodItem>().eq(FoodItem::getIsSystem, true));
         }
 
-        List<FoodItemResponse> result = foods.stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
-        return ApiResponse.ok(result);
+        foods.forEach(this::loadChildren);
+        return ApiResponse.ok(foods.stream().map(this::toResponse).collect(Collectors.toList()));
     }
 
     @GetMapping("/{foodCode}")
     public ApiResponse<FoodItemResponse> getByCode(@PathVariable String foodCode) {
-        FoodItem food = foodItemRepository.findByFoodCode(foodCode)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        FoodItem food = foodItemMapper.selectOne(
+                new LambdaQueryWrapper<FoodItem>().eq(FoodItem::getFoodCode, foodCode));
+        if (food == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
+        loadChildren(food);
         return ApiResponse.ok(toResponse(food));
     }
 
@@ -75,53 +87,55 @@ public class FoodController {
         food.setPriceMax(request.getPriceMax());
         food.setIsSystem(false);
         food.setUserId(userId);
+        foodItemMapper.insert(food);
 
         if (request.getTags() != null) {
-            List<FoodTag> tags = new ArrayList<>();
             for (String t : request.getTags()) {
                 FoodTag tag = new FoodTag();
+                tag.setFoodId(food.getId());
                 tag.setTag(t);
-                tag.setFoodItem(food);
-                tags.add(tag);
+                foodTagMapper.insert(tag);
             }
-            food.setTags(tags);
         }
-
         if (request.getNutrition() != null) {
-            List<FoodNutrition> nutritions = new ArrayList<>();
             for (String n : request.getNutrition()) {
                 FoodNutrition fn = new FoodNutrition();
+                fn.setFoodId(food.getId());
                 fn.setNutritionType(n);
-                fn.setFoodItem(food);
-                nutritions.add(fn);
+                foodNutritionMapper.insert(fn);
             }
-            food.setNutritions(nutritions);
         }
-
         if (request.getAllergens() != null) {
-            List<FoodAllergen> allergens = new ArrayList<>();
             for (String a : request.getAllergens()) {
                 FoodAllergen fa = new FoodAllergen();
+                fa.setFoodId(food.getId());
                 fa.setAllergen(a);
-                fa.setFoodItem(food);
-                allergens.add(fa);
+                foodAllergenMapper.insert(fa);
             }
-            food.setAllergens(allergens);
         }
-
         if (request.getMealTime() != null) {
-            List<FoodMealTime> mealTimes = new ArrayList<>();
             for (String m : request.getMealTime()) {
                 FoodMealTime fmt = new FoodMealTime();
+                fmt.setFoodId(food.getId());
                 fmt.setMealTime(m);
-                fmt.setFoodItem(food);
-                mealTimes.add(fmt);
+                foodMealTimeMapper.insert(fmt);
             }
-            food.setMealTimes(mealTimes);
         }
 
-        foodItemRepository.save(food);
+        loadChildren(food);
         return ApiResponse.ok(toResponse(food));
+    }
+
+    private void loadChildren(FoodItem food) {
+        Long id = food.getId();
+        food.setTags(foodTagMapper.selectList(
+                new LambdaQueryWrapper<FoodTag>().eq(FoodTag::getFoodId, id)));
+        food.setNutritions(foodNutritionMapper.selectList(
+                new LambdaQueryWrapper<FoodNutrition>().eq(FoodNutrition::getFoodId, id)));
+        food.setAllergens(foodAllergenMapper.selectList(
+                new LambdaQueryWrapper<FoodAllergen>().eq(FoodAllergen::getFoodId, id)));
+        food.setMealTimes(foodMealTimeMapper.selectList(
+                new LambdaQueryWrapper<FoodMealTime>().eq(FoodMealTime::getFoodId, id)));
     }
 
     private FoodItemResponse toResponse(FoodItem food) {
@@ -144,8 +158,9 @@ public class FoodController {
 
     private Long getCurrentUserId(Authentication auth) {
         String username = auth.getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND))
-                .getId();
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if (user == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        return user.getId();
     }
 }

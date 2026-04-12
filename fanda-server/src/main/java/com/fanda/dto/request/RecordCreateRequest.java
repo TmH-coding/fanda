@@ -18,7 +18,7 @@ public class RecordCreateRequest {
     @NotBlank(message = "食物名称不能为空")
     private String foodName;
 
-    private Long foodId;
+    private String foodCode;
 
     @NotNull(message = "花费不能为空")
     private BigDecimal cost;

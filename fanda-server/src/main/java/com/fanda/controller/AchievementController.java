@@ -1,12 +1,14 @@
 package com.fanda.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.dto.request.AchievementCheckRequest;
 import com.fanda.dto.response.ApiResponse;
 import com.fanda.entity.AchievementUnlock;
+import com.fanda.entity.User;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
-import com.fanda.repository.AchievementUnlockRepository;
-import com.fanda.repository.UserRepository;
+import com.fanda.mapper.AchievementUnlockMapper;
+import com.fanda.mapper.UserMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -22,10 +24,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AchievementController {
 
-    private final AchievementUnlockRepository achievementUnlockRepository;
-    private final UserRepository userRepository;
+    private final AchievementUnlockMapper achievementUnlockMapper;
+    private final UserMapper userMapper;
 
-    // Achievement definitions
     private static final List<Map<String, Object>> ACHIEVEMENT_DEFS = List.of(
             Map.of("id", "first_meal", "name", "初次记录", "description", "记录第一顿饭", "icon", "utensils", "condition", "totalRecords", "threshold", 1),
             Map.of("id", "week_streak", "name", "坚持一周", "description", "连续记录7天", "icon", "fire", "condition", "streak", "threshold", 7),
@@ -40,10 +41,9 @@ public class AchievementController {
     public ApiResponse<Map<String, Object>> list(Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
 
-        List<String> unlocked = achievementUnlockRepository.findByUserId(userId)
-                .stream()
-                .map(AchievementUnlock::getAchievementId)
-                .collect(Collectors.toList());
+        List<String> unlocked = achievementUnlockMapper.selectList(
+                new LambdaQueryWrapper<AchievementUnlock>().eq(AchievementUnlock::getUserId, userId))
+                .stream().map(AchievementUnlock::getAchievementId).collect(Collectors.toList());
 
         Map<String, Object> result = new HashMap<>();
         result.put("unlocked", unlocked);
@@ -62,10 +62,10 @@ public class AchievementController {
         for (Map<String, Object> def : ACHIEVEMENT_DEFS) {
             String achievementId = (String) def.get("id");
 
-            // Skip if already unlocked
-            if (achievementUnlockRepository.existsByUserIdAndAchievementId(userId, achievementId)) {
-                continue;
-            }
+            Long count = achievementUnlockMapper.selectCount(new LambdaQueryWrapper<AchievementUnlock>()
+                    .eq(AchievementUnlock::getUserId, userId)
+                    .eq(AchievementUnlock::getAchievementId, achievementId));
+            if (count > 0) continue;
 
             String condition = (String) def.get("condition");
             int threshold = (int) def.get("threshold");
@@ -76,7 +76,7 @@ public class AchievementController {
                 unlock.setUserId(userId);
                 unlock.setAchievementId(achievementId);
                 unlock.setUnlockedAt(LocalDateTime.now());
-                achievementUnlockRepository.save(unlock);
+                achievementUnlockMapper.insert(unlock);
 
                 Map<String, Object> unlockInfo = new HashMap<>();
                 unlockInfo.put("id", achievementId);
@@ -103,9 +103,9 @@ public class AchievementController {
     }
 
     private Long getCurrentUserId(Authentication auth) {
-        String username = auth.getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND))
-                .getId();
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, auth.getName()));
+        if (user == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        return user.getId();
     }
 }

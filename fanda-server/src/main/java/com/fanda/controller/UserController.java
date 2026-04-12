@@ -1,10 +1,11 @@
 package com.fanda.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.dto.response.ApiResponse;
 import com.fanda.entity.User;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
-import com.fanda.repository.UserRepository;
+import com.fanda.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,13 +20,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class UserController {
 
-    private final UserRepository userRepository;
+    private final UserMapper userMapper;
 
     @GetMapping("/profile")
     public ApiResponse<Map<String, Object>> profile(Authentication authentication) {
         String username = authentication.getName();
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("id", user.getId());

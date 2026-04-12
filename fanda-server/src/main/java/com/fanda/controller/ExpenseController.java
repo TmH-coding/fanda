@@ -1,12 +1,14 @@
 package com.fanda.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.dto.request.ExpenseCreateRequest;
 import com.fanda.dto.response.ApiResponse;
 import com.fanda.entity.Expense;
+import com.fanda.entity.User;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
-import com.fanda.repository.ExpenseRepository;
-import com.fanda.repository.UserRepository;
+import com.fanda.mapper.ExpenseMapper;
+import com.fanda.mapper.UserMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -21,8 +23,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ExpenseController {
 
-    private final ExpenseRepository expenseRepository;
-    private final UserRepository userRepository;
+    private final ExpenseMapper expenseMapper;
+    private final UserMapper userMapper;
 
     @GetMapping
     public ApiResponse<List<Expense>> list(
@@ -35,11 +37,13 @@ public class ExpenseController {
 
         if (year != null && month != null) {
             YearMonth ym = YearMonth.of(year, month);
-            LocalDate start = ym.atDay(1);
-            LocalDate end = ym.atEndOfMonth();
-            expenses = expenseRepository.findByUserIdAndExpenseDateBetween(userId, start, end);
+            expenses = expenseMapper.selectList(new LambdaQueryWrapper<Expense>()
+                    .eq(Expense::getUserId, userId)
+                    .between(Expense::getExpenseDate, ym.atDay(1), ym.atEndOfMonth()));
         } else {
-            expenses = expenseRepository.findByUserIdOrderByExpenseDateDesc(userId);
+            expenses = expenseMapper.selectList(new LambdaQueryWrapper<Expense>()
+                    .eq(Expense::getUserId, userId)
+                    .orderByDesc(Expense::getExpenseDate));
         }
 
         return ApiResponse.ok(expenses);
@@ -58,8 +62,8 @@ public class ExpenseController {
         expense.setAmount(request.getAmount());
         expense.setMealType(request.getMealType());
         expense.setDescription(request.getDescription());
+        expenseMapper.insert(expense);
 
-        expenseRepository.save(expense);
         return ApiResponse.ok(expense);
     }
 
@@ -67,21 +71,18 @@ public class ExpenseController {
     public ApiResponse<Void> delete(@PathVariable Long id, Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
 
-        Expense expense = expenseRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        Expense expense = expenseMapper.selectById(id);
+        if (expense == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        if (!expense.getUserId().equals(userId)) throw new BusinessException(ErrorCode.FORBIDDEN);
 
-        if (!expense.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-
-        expenseRepository.deleteById(id);
+        expenseMapper.deleteById(id);
         return ApiResponse.ok();
     }
 
     private Long getCurrentUserId(Authentication auth) {
-        String username = auth.getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND))
-                .getId();
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, auth.getName()));
+        if (user == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        return user.getId();
     }
 }

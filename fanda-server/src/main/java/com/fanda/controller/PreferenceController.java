@@ -1,11 +1,12 @@
 package com.fanda.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.dto.request.PreferenceUpdateRequest;
 import com.fanda.dto.response.ApiResponse;
 import com.fanda.entity.*;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
-import com.fanda.repository.*;
+import com.fanda.mapper.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -22,29 +23,34 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PreferenceController {
 
-    private final UserPreferenceRepository userPreferenceRepository;
-    private final UserFavCategoryRepository userFavCategoryRepository;
-    private final UserAllergyRepository userAllergyRepository;
-    private final UserDislikeRepository userDislikeRepository;
-    private final UserFavoriteFoodRepository userFavoriteFoodRepository;
-    private final UserRepository userRepository;
+    private final UserPreferenceMapper userPreferenceMapper;
+    private final UserFavCategoryMapper userFavCategoryMapper;
+    private final UserAllergyMapper userAllergyMapper;
+    private final UserDislikeMapper userDislikeMapper;
+    private final UserFavoriteFoodMapper userFavoriteFoodMapper;
+    private final UserMapper userMapper;
 
     @GetMapping
     public ApiResponse<Map<String, Object>> get(Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
 
-        UserPreference pref = userPreferenceRepository.findByUserId(userId).orElse(null);
+        UserPreference pref = userPreferenceMapper.selectOne(
+                new LambdaQueryWrapper<UserPreference>().eq(UserPreference::getUserId, userId));
 
-        List<String> favCategories = userFavCategoryRepository.findByUserId(userId)
+        List<String> favCategories = userFavCategoryMapper.selectList(
+                new LambdaQueryWrapper<UserFavCategory>().eq(UserFavCategory::getUserId, userId))
                 .stream().map(UserFavCategory::getCategory).collect(Collectors.toList());
 
-        List<String> allergies = userAllergyRepository.findByUserId(userId)
+        List<String> allergies = userAllergyMapper.selectList(
+                new LambdaQueryWrapper<UserAllergy>().eq(UserAllergy::getUserId, userId))
                 .stream().map(UserAllergy::getAllergy).collect(Collectors.toList());
 
-        List<String> dislike = userDislikeRepository.findByUserId(userId)
+        List<String> dislike = userDislikeMapper.selectList(
+                new LambdaQueryWrapper<UserDislike>().eq(UserDislike::getUserId, userId))
                 .stream().map(UserDislike::getDislike).collect(Collectors.toList());
 
-        List<Long> favorites = userFavoriteFoodRepository.findByUserId(userId)
+        List<Long> favorites = userFavoriteFoodMapper.selectList(
+                new LambdaQueryWrapper<UserFavoriteFood>().eq(UserFavoriteFood::getUserId, userId))
                 .stream().map(UserFavoriteFood::getFoodId).collect(Collectors.toList());
 
         Map<String, Object> result = new HashMap<>();
@@ -65,48 +71,50 @@ public class PreferenceController {
 
         Long userId = getCurrentUserId(authentication);
 
-        // Update spicy level
         if (request.getSpicyLevel() != null) {
-            UserPreference pref = userPreferenceRepository.findByUserId(userId)
-                    .orElseGet(() -> {
-                        UserPreference p = new UserPreference();
-                        p.setUserId(userId);
-                        return p;
-                    });
-            pref.setSpicyLevel(request.getSpicyLevel());
-            userPreferenceRepository.save(pref);
+            UserPreference pref = userPreferenceMapper.selectOne(
+                    new LambdaQueryWrapper<UserPreference>().eq(UserPreference::getUserId, userId));
+            if (pref == null) {
+                pref = new UserPreference();
+                pref.setUserId(userId);
+                pref.setSpicyLevel(request.getSpicyLevel());
+                userPreferenceMapper.insert(pref);
+            } else {
+                pref.setSpicyLevel(request.getSpicyLevel());
+                userPreferenceMapper.updateById(pref);
+            }
         }
 
-        // Update favorite categories
         if (request.getFavCategories() != null) {
-            userFavCategoryRepository.deleteByUserId(userId);
+            userFavCategoryMapper.delete(
+                    new LambdaQueryWrapper<UserFavCategory>().eq(UserFavCategory::getUserId, userId));
             for (String cat : request.getFavCategories()) {
                 UserFavCategory fc = new UserFavCategory();
                 fc.setUserId(userId);
                 fc.setCategory(cat);
-                userFavCategoryRepository.save(fc);
+                userFavCategoryMapper.insert(fc);
             }
         }
 
-        // Update allergies
         if (request.getAllergies() != null) {
-            userAllergyRepository.deleteByUserId(userId);
+            userAllergyMapper.delete(
+                    new LambdaQueryWrapper<UserAllergy>().eq(UserAllergy::getUserId, userId));
             for (String allergy : request.getAllergies()) {
                 UserAllergy ua = new UserAllergy();
                 ua.setUserId(userId);
                 ua.setAllergy(allergy);
-                userAllergyRepository.save(ua);
+                userAllergyMapper.insert(ua);
             }
         }
 
-        // Update dislikes
         if (request.getDislike() != null) {
-            userDislikeRepository.deleteByUserId(userId);
+            userDislikeMapper.delete(
+                    new LambdaQueryWrapper<UserDislike>().eq(UserDislike::getUserId, userId));
             for (String d : request.getDislike()) {
                 UserDislike ud = new UserDislike();
                 ud.setUserId(userId);
                 ud.setDislike(d);
-                userDislikeRepository.save(ud);
+                userDislikeMapper.insert(ud);
             }
         }
 
@@ -121,14 +129,20 @@ public class PreferenceController {
 
         Long userId = getCurrentUserId(authentication);
 
-        boolean exists = userFavoriteFoodRepository.existsByUserIdAndFoodId(userId, foodId);
+        Long count = userFavoriteFoodMapper.selectCount(new LambdaQueryWrapper<UserFavoriteFood>()
+                .eq(UserFavoriteFood::getUserId, userId)
+                .eq(UserFavoriteFood::getFoodId, foodId));
+        boolean exists = count > 0;
+
         if (exists) {
-            userFavoriteFoodRepository.deleteByUserIdAndFoodId(userId, foodId);
+            userFavoriteFoodMapper.delete(new LambdaQueryWrapper<UserFavoriteFood>()
+                    .eq(UserFavoriteFood::getUserId, userId)
+                    .eq(UserFavoriteFood::getFoodId, foodId));
         } else {
             UserFavoriteFood fav = new UserFavoriteFood();
             fav.setUserId(userId);
             fav.setFoodId(foodId);
-            userFavoriteFoodRepository.save(fav);
+            userFavoriteFoodMapper.insert(fav);
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -137,9 +151,9 @@ public class PreferenceController {
     }
 
     private Long getCurrentUserId(Authentication auth) {
-        String username = auth.getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND))
-                .getId();
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, auth.getName()));
+        if (user == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        return user.getId();
     }
 }

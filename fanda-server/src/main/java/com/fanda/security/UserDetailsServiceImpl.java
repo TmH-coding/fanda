@@ -1,7 +1,8 @@
 package com.fanda.security;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.entity.User;
-import com.fanda.repository.UserRepository;
+import com.fanda.mapper.UserMapper;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -12,32 +13,29 @@ import java.util.Collections;
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
 
-    private final UserRepository userRepository;
+    private final UserMapper userMapper;
 
-    public UserDetailsServiceImpl(UserRepository userRepository) {
-        this.userRepository = userRepository;
+    public UserDetailsServiceImpl(UserMapper userMapper) {
+        this.userMapper = userMapper;
     }
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                        "User not found with username: " + username));
-
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with username: " + username);
+        }
         return new org.springframework.security.core.userdetails.User(
-                user.getUsername(),
-                user.getPassword(),
-                Collections.emptyList());
+                user.getUsername(), user.getPassword(), Collections.emptyList());
     }
 
     public UserDetails loadUserById(Long id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                        "User not found with id: " + id));
-
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with id: " + id);
+        }
         return new org.springframework.security.core.userdetails.User(
-                user.getUsername(),
-                user.getPassword(),
-                Collections.emptyList());
+                user.getUsername(), user.getPassword(), Collections.emptyList());
     }
 }
