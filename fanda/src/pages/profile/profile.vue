@@ -100,6 +100,10 @@
     <!-- 数据管理 -->
     <view class="section fd-card">
       <text class="section-title">⚙️ 数据管理</text>
+      <view class="menu-item" @tap="goStats">
+        <text class="menu-item-label">📊 我的报告</text>
+        <text class="menu-item-arrow">›</text>
+      </view>
       <view class="fd-btn--outline" style="margin-top: 16rpx" @tap="clearData">
         <text>清除所有数据</text>
       </view>
@@ -154,6 +158,10 @@ const userNickname = computed(() => {
   }
   return '饭搭用户'
 })
+
+function goStats() {
+  uni.navigateTo({ url: '/pages/stats/stats' })
+}
 
 function onLogout() {
   uni.showModal({
@@ -230,6 +238,17 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 0;
+  border-bottom: 2rpx solid $fd-border;
+  &:last-of-type { border-bottom: none; }
+}
+.menu-item-label { font-size: $fd-font-base; color: $fd-text; }
+.menu-item-arrow { font-size: 40rpx; color: $fd-text-light; }
+
 .profile-header {
   @include fd-flex-column;
   align-items: center;

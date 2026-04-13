@@ -48,6 +48,13 @@
         "navigationBarTitleText": "登录",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/stats/stats",
+      "style": {
+        "navigationBarTitleText": "我的报告",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

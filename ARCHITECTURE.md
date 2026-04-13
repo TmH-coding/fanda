@@ -1,368 +1,612 @@
-# 饭搭 (FanDa) 项目架构文档
+# 饭搭 (FanDa) 项目文档
+
+> 打工人智能饮食决策助手 — 全栈技术文档
+
+---
+
+## 目录
+
+- [项目概述](#项目概述)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [后端架构](#后端架构)
+- [前端架构](#前端架构)
+- [数据库设计](#数据库设计)
+- [API 接口文档](#api-接口文档)
+- [WebSocket 实时通信](#websocket-实时通信)
+- [启动指南](#启动指南)
+- [功能模块](#功能模块)
+
+---
 
 ## 项目概述
 
-**饭搭**是一个全栈应用，包含前端（uni-app）和后端（Spring Boot）两部分。
+**饭搭**是一款面向都市打工人的移动端饮食助手，提供：
 
-- **前端**: uni-app (Vue 3) - 支持 H5 和微信小程序
-- **后端**: Spring Boot 3.2.5 + MySQL + JWT 认证
-- **数据库**: MySQL 8.0+
-
----
-
-## 整体架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     用户设备                                  │
-│  ┌──────────────────┐         ┌──────────────────┐          │
-│  │   H5 浏览器      │         │  微信小程序      │          │
-│  └────────┬─────────┘         └────────┬─────────┘          │
-└───────────┼──────────────────────────────┼──────────────────┘
-            │                              │
-            └──────────────┬───────────────┘
-                           │ HTTP/HTTPS
-            ┌──────────────▼───────────────┐
-            │   Spring Boot 后端服务       │
-            │   (8080 端口)                │
-            │  ┌────────────────────────┐  │
-            │  │  REST API 层           │  │
-            │  │  (Controller)          │  │
-            │  └────────────┬───────────┘  │
-            │  ┌────────────▼───────────┐  │
-            │  │  业务逻辑层            │  │
-            │  │  (Service)             │  │
-            │  └────────────┬───────────┘  │
-            │  ┌────────────▼───────────┐  │
-            │  │  数据访问层            │  │
-            │  │  (Repository/JPA)      │  │
-            │  └────────────┬───────────┘  │
-            └───────────────┼──────────────┘
-                            │ JDBC
-            ┌───────────────▼──────────────┐
-            │   MySQL 数据库               │
-            │   (localhost:3306)           │
-            └──────────────────────────────┘
-```
+| 模块 | 功能 |
+|------|------|
+| 转盘推荐 | 智能推荐、排除法、偏好过滤、一键记录 |
+| 饮食日历 | 月历视图、三餐记录、营养标签 |
+| 预算管家 | 预算设定、消费追踪、超支预警 |
+| 拼饭广场 | 发起拼饭、实时投票、WebSocket 群聊 |
+| 数据报告 | 消费趋势图、营养摄入分析、用餐习惯统计 |
+| 个人中心 | 口味偏好、忌口设置、成就系统、收藏夹 |
 
 ---
 
-## 后端架构详解
+## 技术栈
 
-### 目录结构
+### 后端
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Spring Boot | 3.2.5 | 核心框架 |
+| MyBatis-Plus | 3.5.7 | ORM 框架 |
+| Spring Security | 6.x | 认证授权 |
+| Spring WebSocket | 6.x | 实时通信 |
+| JJWT | 0.12.5 | JWT 令牌 |
+| MySQL | 8.0+ | 关系型数据库 |
+| Lombok | latest | 代码简化 |
+| Java | 17 | 运行环境 |
+
+### 前端
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| uni-app | 3.0.0 | 跨平台框架 |
+| Vue | 3.4.38 | 前端框架 |
+| Pinia | 2.1.7 | 状态管理 |
+| Vite | 5.2.8 | 构建工具 |
+| Day.js | 1.11.12 | 日期处理 |
+| SCSS | 1.77.8 | 样式预处理 |
+
+---
+
+## 项目结构
 
 ```
-fanda-server/
-├── pom.xml                          # Maven 配置
-├── src/
-│   ├── main/
-│   │   ├── java/com/fanda/
-│   │   │   ├── FandaServerApplication.java    # 启动类
-│   │   │   ├── config/                        # 配置类
-│   │   │   │   ├── CorsConfig.java           # CORS 跨域配置
-│   │   │   │   └── SecurityConfig.java       # Spring Security 配置
-│   │   │   ├── controller/                    # REST API 控制层 (7个)
-│   │   │   │   ├── AuthController.java       # 认证 (登录/注册/刷新token)
-│   │   │   │   ├── UserController.java       # 用户信息
-│   │   │   │   ├── FoodController.java       # 菜品管理
-│   │   │   │   ├── RecordController.java     # 用餐记录
-│   │   │   │   ├── BudgetController.java     # 预算管理
-│   │   │   │   ├── ExpenseController.java    # 消费记录
-│   │   │   │   ├── PreferenceController.java # 用户偏好
-│   │   │   │   ├── SocialController.java     # 拼饭社交
-│   │   │   │   └── AchievementController.java# 成就系统
-│   │   │   ├── service/                      # 业务逻辑层
-│   │   │   │   ├── impl/                     # 实现类
-│   │   │   │   └── *.java                    # 接口定义
-│   │   │   ├── repository/                   # 数据访问层 (JPA)
-│   │   │   │   └── *Repository.java          # 数据库操作接口
-│   │   │   ├── entity/                       # 数据模型 (JPA Entity)
-│   │   │   │   ├── User.java
-│   │   │   │   ├── FoodItem.java
-│   │   │   │   ├── MealRecord.java
-│   │   │   │   ├── Budget.java
-│   │   │   │   ├── Expense.java
-│   │   │   │   ├── UserPreference.java
-│   │   │   │   ├── SocialGroup.java
-│   │   │   │   └── AchievementUnlock.java
-│   │   │   ├── dto/                          # 数据传输对象
-│   │   │   │   ├── request/                  # 请求 DTO
-│   │   │   │   └── response/                 # 响应 DTO
-│   │   │   ├── security/                     # 安全相关
-│   │   │   │   ├── JwtTokenProvider.java     # JWT 工具类
-│   │   │   │   ├── UserDetailsServiceImpl.java# 用户详情服务
-│   │   │   │   └── JwtAuthenticationFilter.java# JWT 过滤器
-│   │   │   ├── exception/                    # 异常处理
-│   │   │   │   ├── GlobalExceptionHandler.java
-│   │   │   │   └── BusinessException.java
-│   │   │   └── init/                         # 初始化
-│   │   │       └── DataInitializer.java      # 初始数据加载
-│   │   └── resources/
-│   │       ├── application.yml               # 应用配置
-│   │       └── db/
-│   │           └── schema.sql                # 数据库初始化脚本
-│   └── test/                                 # 测试代码
-│       └── java/com/fanda/
-└── target/                                   # 编译输出目录
+fanda-project/
+├── fanda/                          # 前端 (uni-app)
+│   ├── src/
+│   │   ├── pages/                  # 页面
+│   │   │   ├── index/              # 首页 - 转盘推荐
+│   │   │   ├── calendar/           # 饮食日历
+│   │   │   ├── budget/             # 预算管家
+│   │   │   ├── social/             # 拼饭广场
+│   │   │   ├── social-detail/      # 拼饭详情（WebSocket）
+│   │   │   ├── stats/              # 数据统计报告
+│   │   │   ├── profile/            # 个人中心
+│   │   │   └── login/              # 登录/注册
+│   │   ├── stores/                 # Pinia 状态管理
+│   │   │   └── modules/
+│   │   │       ├── auth.js         # 认证状态
+│   │   │       ├── food.js         # 菜品数据
+│   │   │       ├── record.js       # 用餐记录
+│   │   │       ├── budget.js       # 预算管理
+│   │   │       ├── preference.js   # 用户偏好
+│   │   │       ├── social.js       # 拼饭社交
+│   │   │       └── achievement.js  # 成就系统
+│   │   ├── services/               # 数据服务层
+│   │   │   ├── local/              # 本地存储实现
+│   │   │   └── remote/             # 远程 API 实现
+│   │   ├── utils/
+│   │   │   ├── http.js             # HTTP 封装（JWT 自动刷新）
+│   │   │   ├── websocket.js        # WebSocket 封装（自动重连）
+│   │   │   ├── storage.js          # 本地存储工具
+│   │   │   └── date.js             # 日期工具
+│   │   ├── components/             # 公共组件
+│   │   ├── config/
+│   │   │   └── index.js            # 全局配置（dataMode: remote）
+│   │   └── styles/                 # 全局样式变量
+│   ├── vite.config.js              # Vite 配置（含 API 代理）
+│   └── package.json
+│
+├── fanda-server/                   # 后端 (Spring Boot)
+│   └── src/main/java/com/fanda/
+│       ├── FandaApplication.java   # 启动类（@MapperScan）
+│       ├── config/
+│       │   ├── SecurityConfig.java # Spring Security + JWT 配置
+│       │   ├── CorsConfig.java     # 跨域配置
+│       │   └── WebSocketConfig.java# WebSocket 端点注册
+│       ├── controller/             # REST API 控制器（10个）
+│       │   ├── AuthController.java
+│       │   ├── UserController.java
+│       │   ├── FoodController.java
+│       │   ├── RecordController.java
+│       │   ├── BudgetController.java
+│       │   ├── ExpenseController.java
+│       │   ├── PreferenceController.java
+│       │   ├── SocialController.java
+│       │   ├── AchievementController.java
+│       │   └── StatsController.java
+│       ├── entity/                 # 数据实体（MyBatis-Plus）
+│       ├── mapper/                 # Mapper 接口（BaseMapper）
+│       ├── dto/
+│       │   ├── request/            # 请求 DTO（含校验注解）
+│       │   └── response/           # 响应 DTO
+│       ├── websocket/              # WebSocket 实时通信
+│       │   ├── WsMessage.java      # 消息模型
+│       │   ├── SocialRoomManager.java  # 房间管理
+│       │   └── SocialWebSocketHandler.java # 连接处理
+│       ├── security/               # JWT 认证
+│       │   ├── JwtTokenProvider.java
+│       │   ├── JwtAuthenticationFilter.java
+│       │   └── UserDetailsServiceImpl.java
+│       ├── exception/              # 全局异常处理
+│       ├── init/                   # 数据初始化（80+ 内置菜品）
+│       └── config/                 # MetaObjectHandler（时间戳自动填充）
+│
+├── ARCHITECTURE.md                 # 架构文档（本文件）
+├── STARTUP_GUIDE.md                # 启动指南
+└── ARCHITECTURE.md
 ```
 
-### 核心模块说明
+---
 
-#### 1. 认证模块 (Authentication)
-- **JWT Token**: 无状态认证
-- **刷新机制**: Access Token (2小时) + Refresh Token (7天)
-- **密码加密**: Spring Security BCrypt
-- **端点**:
-  - `POST /api/auth/register` - 注册
-  - `POST /api/auth/login` - 登录
-  - `POST /api/auth/refresh` - 刷新 Token
+## 后端架构
 
-#### 2. 用户模块 (User)
-- 用户基本信息管理
-- 头像、昵称等个人资料
-- 端点: `GET/PUT /api/users/{id}`
+### 分层设计
 
-#### 3. 菜品模块 (Food)
-- 系统菜品库 (80+ 内置菜品)
-- 用户自定义菜品
-- 菜品标签、营养、过敏原、适用餐次
-- 端点: `GET /api/foods`, `POST /api/foods`
+```
+HTTP 请求
+    ↓
+JwtAuthenticationFilter        ← 验证 Bearer Token
+    ↓
+Controller（REST API）         ← 入参校验、权限校验
+    ↓
+Mapper（MyBatis-Plus）         ← 数据库 CRUD
+    ↓
+MySQL 数据库
+```
 
-#### 4. 用餐记录模块 (Record)
-- 记录三餐饮食
-- 关联菜品、成本、营养信息
-- 按日期查询
-- 端点: `GET/POST /api/records`
+### 安全机制
 
-#### 5. 预算管理模块 (Budget)
-- 设定每日/每月预算
-- 消费追踪
-- 超支预警
-- 端点: `GET/PUT /api/budgets`, `GET/POST /api/expenses`
+- **无状态 JWT**：Access Token（2小时）+ Refresh Token（7天）
+- **BCrypt 密码加密**
+- **Spring Security**：公开路由白名单 + 全局鉴权
+- **WebSocket 鉴权**：连接时通过 query 参数传 Token，服务端验证
 
-#### 6. 用户偏好模块 (Preference)
-- 口味偏好 (辛辣、清淡等)
-- 忌口设置 (过敏原、不喜欢的食物)
-- 收藏夹
-- 端点: `GET/PUT /api/preferences`
+### 关键设计
 
-#### 7. 社交模块 (Social)
-- 拼饭活动管理
-- 投票选餐厅
-- 成员管理
-- 端点: `GET/POST /api/social/groups`
+**MyBatis-Plus 自动填充**（`MetaObjectHandler`）
 
-#### 8. 成就系统 (Achievement)
-- 成就解锁记录
-- 成就检查逻辑
-- 端点: `GET /api/achievements`
+```java
+// createdAt：INSERT 时自动填充
+// updatedAt：INSERT + UPDATE 时自动填充
+```
+
+**统一响应格式**（`ApiResponse<T>`）
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { ... }
+}
+```
+
+**全局异常处理**（`GlobalExceptionHandler`）
+
+- `BusinessException` → 业务错误码
+- `MethodArgumentNotValidException` → 参数校验失败
+- `Exception` → 兜底处理
+
+---
+
+## 前端架构
+
+### 数据流
+
+```
+页面组件 → Pinia Store → Service（local/remote）→ HTTP/Storage
+```
+
+### 数据模式切换
+
+```javascript
+// src/config/index.js
+dataMode: 'remote'   // 'local' | 'remote'
+apiBaseUrl: ''       // H5 开发模式通过 Vite proxy 代理到 :8080
+```
+
+### HTTP 工具（`utils/http.js`）
+
+- 自动附加 `Authorization: Bearer <token>` 请求头
+- 401 自动刷新 Token 并重试原请求
+- 刷新失败自动跳转登录页
+
+### Vite 开发代理
+
+```javascript
+// vite.config.js
+server: {
+  proxy: {
+    '/api': { target: 'http://localhost:8080', changeOrigin: true }
+  }
+}
+```
+
+### WebSocket 工具（`utils/websocket.js`）
+
+```javascript
+const socket = createSocialSocket(groupId, {
+  onOpen: () => {},
+  onMessage: (msg) => {},  // msg.type: JOIN | VOTE | CHAT | FULL
+  onClose: () => {},
+})
+socket.sendChat('消息内容')
+socket.close()
+```
 
 ---
 
 ## 数据库设计
 
-### 核心表结构
+### 表结构总览
 
-| 表名 | 说明 | 关键字段 |
-|------|------|---------|
-| `fd_user` | 用户表 | id, username, password, nickname |
-| `fd_food_item` | 菜品表 | id, name, category, price_min, price_max |
-| `fd_food_tag` | 菜品标签 | food_id, tag |
-| `fd_food_nutrition` | 菜品营养 | food_id, nutrition_type |
-| `fd_food_allergen` | 菜品过敏原 | food_id, allergen |
-| `fd_meal_record` | 用餐记录 | user_id, record_date, meal_type, food_id |
-| `fd_budget` | 预算设置 | user_id, daily_limit, monthly_limit |
-| `fd_expense` | 消费记录 | user_id, expense_date, amount |
-| `fd_user_preference` | 用户偏好 | user_id, taste_tags, forbidden_foods |
-| `fd_social_group` | 拼饭活动 | id, creator_id, title, status |
-| `fd_achievement_unlock` | 成就解锁 | user_id, achievement_id, unlocked_at |
+| 表名 | 说明 |
+|------|------|
+| `fd_user` | 用户基本信息 |
+| `fd_food_item` | 菜品主表（含系统菜品 + 用户自定义） |
+| `fd_food_tag` | 菜品口味标签 |
+| `fd_food_nutrition` | 菜品营养类型 |
+| `fd_food_allergen` | 菜品过敏原 |
+| `fd_food_meal_time` | 菜品适用餐次 |
+| `fd_meal_record` | 用餐记录 |
+| `fd_record_nutrition` | 用餐营养记录 |
+| `fd_budget` | 用户预算设置 |
+| `fd_expense` | 消费记录 |
+| `fd_user_preference` | 用户偏好（辣度等） |
+| `fd_user_allergy` | 忌口设置 |
+| `fd_user_fav_category` | 偏好分类 |
+| `fd_user_dislike` | 不喜欢的食物 |
+| `fd_user_favorite_food` | 收藏的菜品 |
+| `fd_social_group` | 拼饭活动 |
+| `fd_social_tag` | 拼饭标签 |
+| `fd_social_candidate` | 候选餐厅/菜品（含票数） |
+| `fd_social_member` | 拼饭成员 |
+| `fd_social_vote` | 投票记录 |
+| `fd_achievement_unlock` | 成就解锁记录 |
+
+### 关键关系
+
+```
+fd_user (1) ──→ (N) fd_meal_record
+fd_meal_record (1) ──→ (N) fd_record_nutrition
+fd_user (1) ──→ (N) fd_expense
+fd_user (1) ──→ (1) fd_budget
+fd_user (1) ──→ (1) fd_user_preference
+fd_food_item (1) ──→ (N) fd_food_tag / fd_food_nutrition / fd_food_allergen / fd_food_meal_time
+fd_social_group (1) ──→ (N) fd_social_candidate / fd_social_member / fd_social_tag
+```
 
 ---
 
-## 前端架构详解
+## API 接口文档
 
-### 目录结构
+> 所有接口前缀：`http://localhost:8080`
+> 认证接口以外，请求头需携带：`Authorization: Bearer <token>`
 
-```
-fanda/
-├── src/
-│   ├── main.js                      # 应用入口
-│   ├── App.vue                      # 根组件
-│   ├── pages.json                   # 路由 & TabBar 配置
-│   ├── manifest.json                # 应用配置
-│   ├── uni.scss                     # 全局 SCSS 变量
-│   │
-│   ├── pages/                       # 页面 (6个)
-│   │   ├── index/                   # 首页 - 转盘推荐
-│   │   ├── calendar/                # 饮食日历
-│   │   ├── budget/                  # 预算管家
-│   │   ├── social/                  # 拼饭广场
-│   │   ├── social-detail/           # 拼饭详情
-│   │   └── profile/                 # 个人中心
-│   │
-│   ├── components/                  # 组件库
-│   │   ├── common/                  # 通用组件
-│   │   │   ├── fd-nav-bar.vue      # 导航栏
-│   │   │   ├── fd-modal.vue        # 弹窗
-│   │   │   └── fd-empty.vue        # 空状态
-│   │   └── recommend/               # 推荐相关
-│   │       ├── fd-wheel.vue        # 转盘组件
-│   │       ├── fd-food-result.vue  # 推荐结果
-│   │       └── fd-exclude-tags.vue # 排除标签
-│   │
-│   ├── stores/                      # Pinia 状态管理
-│   │   ├── index.js                # 统一导出
-│   │   └── modules/
-│   │       ├── food.js             # 菜品 Store
-│   │       ├── record.js           # 记录 Store
-│   │       ├── budget.js           # 预算 Store
-│   │       ├── preference.js       # 偏好 Store
-│   │       ├── social.js           # 社交 Store
-│   │       └── achievement.js      # 成就 Store
-│   │
-│   ├── services/                    # 数据服务层
-│   │   ├── factory.js              # 服务工厂
-│   │   ├── local/                  # 本地存储实现
-│   │   └── remote/                 # 远程 API 实现
-│   │
-│   ├── composables/                 # 组合式函数
-│   │   └── useRecommend.js         # 推荐算法
-│   │
-│   ├── utils/                       # 工具函数
-│   │   ├── storage.js              # 存储工具
-│   │   ├── date.js                 # 日期工具
-│   │   ├── format.js               # 格式化工具
-│   │   └── platform.js             # 平台适配
-│   │
-│   ├── styles/                      # 全局样式
-│   │   ├── variables.scss          # 变量定义
-│   │   ├── mixins.scss             # Mixin 定义
-│   │   ├── animation.scss          # 动画定义
-│   │   └── common.scss             # 公共样式
-│   │
-│   ├── data/                        # 静态数据
-│   │   ├── foods.js                # 菜品数据库
-│   │   ├── achievements.js         # 成就定义
-│   │   └── mockSocial.js           # 模拟数据
-│   │
-│   ├── config/                      # 配置
-│   │   ├── index.js                # 主配置
-│   │   ├── theme.js                # 主题配置
-│   │   └── constants.js            # 常量定义
-│   │
-│   └── static/                      # 静态资源
-│       └── tabbar/                 # TabBar 图标
-│
-├── index.html                       # H5 入口 HTML
-├── package.json                     # 依赖配置
-└── vite.config.js                   # Vite 构建配置
+### 认证 `/api/auth`
+
+| 方法 | 路径 | 说明 | 公开 |
+|------|------|------|------|
+| POST | `/api/auth/register` | 注册 | ✅ |
+| POST | `/api/auth/login` | 登录 | ✅ |
+| POST | `/api/auth/refresh` | 刷新 Token | ✅ |
+
+**注册请求体**
+```json
+{ "username": "test", "password": "123456", "nickname": "测试用户" }
 ```
 
-### 前端技术栈
+**登录响应**
+```json
+{
+  "code": 200,
+  "data": {
+    "token": "eyJ...",
+    "refreshToken": "eyJ...",
+    "expiresIn": 7200000,
+    "user": { "id": 1, "username": "test", "nickname": "测试用户" }
+  }
+}
+```
 
-| 技术 | 版本 | 用途 |
+---
+
+### 菜品 `/api/foods`
+
+| 方法 | 路径 | 说明 | 参数 |
+|------|------|------|------|
+| GET | `/api/foods` | 获取菜品列表 | `category`, `keyword` |
+| GET | `/api/foods/{foodCode}` | 获取单个菜品 | - |
+| POST | `/api/foods` | 新增自定义菜品 | 需登录 |
+
+**菜品响应结构**
+```json
+{
+  "id": "n007",
+  "name": "红烧肉",
+  "category": "中式",
+  "priceRange": [20, 35],
+  "tags": ["咸鲜", "下饭"],
+  "nutrition": ["protein", "fat"],
+  "allergens": [],
+  "mealTime": ["lunch", "dinner"]
+}
+```
+
+---
+
+### 用餐记录 `/api/records`
+
+| 方法 | 路径 | 说明 | 参数 |
+|------|------|------|------|
+| GET | `/api/records` | 获取记录列表 | `date`, `year`, `month` |
+| POST | `/api/records` | 新增记录 | - |
+| DELETE | `/api/records/{id}` | 删除记录 | - |
+
+**新增记录请求体**
+```json
+{
+  "date": "2026-04-13",
+  "mealType": "lunch",
+  "foodName": "红烧肉",
+  "foodCode": "n007",
+  "cost": 25.00,
+  "nutrition": ["protein", "fat"]
+}
+```
+
+---
+
+### 预算 `/api/budget` & 消费 `/api/expenses`
+
+| 方法 | 路径 | 说明 |
 |------|------|------|
-| Vue | 3.4.38 | 前端框架 |
-| uni-app | 3.0.0 | 跨平台框架 |
-| Pinia | 2.1.7 | 状态管理 |
-| Day.js | 1.11.12 | 日期处理 |
-| Vite | 5.2.8 | 构建工具 |
-| SCSS | 1.77.8 | 样式预处理 |
+| GET | `/api/budget` | 获取预算 |
+| PUT | `/api/budget` | 更新预算 |
+| GET | `/api/expenses` | 获取消费记录（支持 `year`, `month` 筛选） |
+| POST | `/api/expenses` | 新增消费 |
+| DELETE | `/api/expenses/{id}` | 删除消费 |
 
 ---
 
-## 技术栈总览
+### 用户偏好 `/api/preferences`
 
-### 后端
-- **框架**: Spring Boot 3.2.5
-- **数据库**: MySQL 8.0+
-- **ORM**: Spring Data JPA + Hibernate
-- **认证**: JWT + Spring Security
-- **构建**: Maven
-- **Java 版本**: 17
-
-### 前端
-- **框架**: Vue 3 + uni-app
-- **状态管理**: Pinia
-- **样式**: SCSS + CSS Variables
-- **构建**: Vite
-- **Node 版本**: >= 18.0
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/preferences` | 获取偏好 |
+| PUT | `/api/preferences` | 更新偏好 |
+| POST | `/api/preferences/favorite/{foodId}` | 切换收藏 |
 
 ---
 
-## 数据流向
+### 拼饭 `/api/social/groups`
 
-### 用户登录流程
-```
-1. 用户输入用户名/密码
-   ↓
-2. 前端 POST /api/auth/login
-   ↓
-3. 后端验证密码 (BCrypt)
-   ↓
-4. 生成 JWT Token (Access + Refresh)
-   ↓
-5. 前端存储 Token (localStorage)
-   ↓
-6. 后续请求在 Header 中携带 Token
-   ↓
-7. JwtAuthenticationFilter 验证 Token
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/social/groups` | 获取活动列表（支持 `status` 筛选） |
+| GET | `/api/social/groups/{id}` | 获取活动详情 |
+| POST | `/api/social/groups` | 发起拼饭 |
+| POST | `/api/social/groups/{id}/join` | 加入拼饭 |
+| POST | `/api/social/groups/{id}/vote` | 投票 |
 
-### 推荐算法流程
-```
-1. 用户点击转盘
-   ↓
-2. 获取用户偏好 (口味、忌口、收藏)
-   ↓
-3. 从菜品库筛选符合条件的菜品
-   ↓
-4. 应用排除法 (用户排除的菜品)
-   ↓
-5. 随机选择推荐菜品
-   ↓
-6. 显示推荐结果 + 记录
+**发起拼饭请求体**
+```json
+{
+  "title": "今天去吃火锅！",
+  "time": "12:00",
+  "location": "楼下美食广场",
+  "maxPeople": 4,
+  "candidates": ["海底捞", "小龙坎", "呷哺呷哺"],
+  "tags": ["火锅", "聚餐"]
+}
 ```
 
 ---
 
-## 部署架构
+### 数据统计 `/api/stats`
 
-### 开发环境
-```
-本地开发机
-├── Node.js 18+ (前端)
-├── Java 17 (后端)
-├── MySQL 8.0 (本地数据库)
-└── IDE (VS Code / IntelliJ)
+| 方法 | 路径 | 说明 | 参数 |
+|------|------|------|------|
+| GET | `/api/stats/expense` | 消费趋势 | `year`, `month` |
+| GET | `/api/stats/nutrition` | 营养摄入 | `year`, `month` |
+| GET | `/api/stats/habit` | 用餐习惯 | - |
+
+**消费趋势响应**
+```json
+{
+  "byDay": { "01": 35.5, "02": 0, "03": 42.0, "...": "..." },
+  "byMealType": { "breakfast": 120.5, "lunch": 300.0, "dinner": 200.0 },
+  "total": 620.5,
+  "avgPerDay": 20.68,
+  "activeDays": 30
+}
 ```
 
-### 生产环境 (规划)
-```
-云服务器
-├── Nginx (反向代理 + 静态资源)
-├── Spring Boot (Docker 容器)
-├── MySQL (云数据库)
-└── CDN (静态资源加速)
+**用餐习惯响应**
+```json
+{
+  "totalRecords": 89,
+  "streak": 7,
+  "topFoods": [
+    { "name": "红烧肉", "count": 12 },
+    { "name": "炒饭", "count": 9 }
+  ],
+  "mealTypeCount": { "lunch": 45, "dinner": 30, "breakfast": 14 }
+}
 ```
 
 ---
 
-## 关键设计决策
+### 成就 `/api/achievements`
 
-1. **JWT 无状态认证**: 便于分布式部署，无需 Session 存储
-2. **分层架构**: Controller → Service → Repository，职责清晰
-3. **DTO 模式**: 请求/响应与实体分离，API 稳定性强
-4. **Pinia 状态管理**: 集中管理前端状态，便于调试
-5. **本地存储优先**: 前端优先使用本地存储，后续可切换到远程 API
-6. **菜品标签化**: 灵活的标签系统支持多维度筛选
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/achievements` | 获取已解锁成就 |
+| POST | `/api/achievements/check` | 触发成就检查 |
 
 ---
 
-## 扩展点
+## WebSocket 实时通信
 
-1. **推荐算法**: 可接入 ML 模型优化推荐
-2. **社交功能**: 可接入 WebSocket 实现实时通信
-3. **支付集成**: 可接入微信支付/支付宝
-4. **LBS 功能**: 可接入高德地图 API 推荐附近餐厅
-5. **数据分析**: 可接入 ELK 或 Grafana 进行数据可视化
+### 连接地址
+
+```
+ws://localhost:8080/ws/social?token=<JWT>&groupId=<群组ID>
+```
+
+### 消息类型
+
+| type | 触发时机 | 携带数据 |
+|------|----------|---------|
+| `JOIN` | 有用户加入群组 | `sender`（昵称）, `content` |
+| `VOTE` | 有用户投票 | `sender`, `candidateName`, `data`（最新候选列表） |
+| `CHAT` | 群成员发送消息 | `sender`, `content` |
+| `FULL` | 群组人数已满 | `content`（提示文字） |
+
+### 消息格式
+
+```json
+{
+  "type": "CHAT",
+  "groupId": 1,
+  "sender": "张三",
+  "content": "今天去吃火锅吧！",
+  "data": null,
+  "timestamp": "2026-04-13T12:00:00"
+}
+```
+
+### 发送消息
+
+客户端只支持发送聊天消息：
+
+```json
+{ "type": "CHAT", "content": "消息内容" }
+```
+
+### 自动重连
+
+网络断开后 3 秒自动重连，前端通过 `wsConnected` 状态显示连接状态。
+
+---
+
+## 启动指南
+
+### 环境要求
+
+| 工具 | 版本 |
+|------|------|
+| Java | 17+ |
+| Maven | 3.6+ |
+| MySQL | 8.0+ |
+| Node.js | 18.0+ |
+
+### 启动步骤
+
+**第一步：准备数据库**
+
+```bash
+mysql -u root -p
+CREATE DATABASE IF NOT EXISTS fanda DEFAULT CHARACTER SET utf8mb4;
+exit;
+
+mysql -u root -p fanda < fanda-server/src/main/resources/db/schema.sql
+```
+
+**第二步：配置数据库密码**
+
+修改 `fanda-server/src/main/resources/application.yml`：
+```yaml
+spring:
+  datasource:
+    password: ${DB_PASSWORD:你的MySQL密码}
+```
+
+**第三步：启动后端**
+
+```bash
+cd fanda-server
+mvn spring-boot:run
+# 启动成功: Started FandaApplication in X.X seconds
+```
+
+**第四步：启动前端**
+
+```bash
+cd fanda
+npm install
+npm run dev:h5
+# 浏览器打开 http://localhost:5173
+```
+
+### 验证后端
+
+```bash
+# 注册
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"123456","nickname":"测试"}'
+
+# 登录
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"123456"}'
+```
+
+---
+
+## 功能模块
+
+### 已完成
+
+- ✅ JWT 无状态认证（登录、注册、Token 刷新）
+- ✅ 菜品管理（80+ 内置菜品 + 用户自定义）
+- ✅ 用餐记录（三餐记录、日历视图）
+- ✅ 预算管家（月预算、消费追踪、超支预警）
+- ✅ 用户偏好（口味、忌口、收藏夹）
+- ✅ 拼饭广场（发起、加入、投票）
+- ✅ WebSocket 实时通信（入群通知、投票同步、群聊）
+- ✅ 数据统计（消费趋势图、营养摄入、用餐习惯）
+- ✅ 成就系统
+
+### 规划中
+
+- ⬜ 暗黑模式主题切换
+- ⬜ 好友系统（关注/粉丝）
+- ⬜ 微信授权登录
+- ⬜ AI 智能推荐（Claude API）
+- ⬜ 图片识别点餐
+- ⬜ LBS 附近餐厅推荐（高德地图）
+- ⬜ 消息推送通知
+
+---
+
+## 设计规范
+
+### 色彩系统
+
+| 变量 | 色值 | 用途 |
+|------|------|------|
+| `$fd-primary` | `#FF6B6B` | 主色（珊瑚红） |
+| `$fd-secondary` | `#FFE66D` | 辅色（暖黄） |
+| `$fd-accent` | `#4ECDC4` | 点缀色（薄荷绿） |
+| `$fd-bg` | `#FFF5F5` | 背景色 |
+| `$fd-success` | `#2ED573` | 成功 |
+| `$fd-danger` | `#FF4757` | 危险 |
+
+### 圆角规范
+
+| 变量 | 大小 |
+|------|------|
+| `$fd-radius-sm` | 12rpx |
+| `$fd-radius` | 24rpx |
+| `$fd-radius-lg` | 36rpx |
+| `$fd-radius-round` | 999rpx |
+
+### 组件命名
+
+所有自定义组件统一使用 `fd-` 前缀，如 `fd-nav-bar`、`fd-modal`。

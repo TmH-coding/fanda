@@ -8,6 +8,8 @@ import com.fanda.entity.*;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
 import com.fanda.mapper.*;
+import com.fanda.websocket.SocialRoomManager;
+import com.fanda.websocket.WsMessage;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -28,6 +30,7 @@ public class SocialController {
     private final SocialVoteMapper socialVoteMapper;
     private final SocialTagMapper socialTagMapper;
     private final UserMapper userMapper;
+    private final SocialRoomManager roomManager;
 
     @GetMapping
     public ApiResponse<List<SocialGroup>> list(
@@ -134,6 +137,16 @@ public class SocialController {
         }
         socialGroupMapper.updateById(group);
 
+        // 广播加入事件
+        User joinedUser = userMapper.selectById(userId);
+        String displayName = joinedUser != null
+                ? (joinedUser.getNickname() != null ? joinedUser.getNickname() : joinedUser.getUsername())
+                : "新成员";
+        roomManager.broadcast(id, WsMessage.join(id, displayName));
+        if ("full".equals(group.getStatus())) {
+            roomManager.broadcast(id, WsMessage.full(id));
+        }
+
         loadChildren(group);
         return ApiResponse.ok(group);
     }
@@ -166,7 +179,14 @@ public class SocialController {
         vote.setCandidateId(request.getCandidateId());
         socialVoteMapper.insert(vote);
 
+        // 广播投票事件（含最新候选列表）
         loadChildren(group);
+        User voter = userMapper.selectById(userId);
+        String voterName = voter != null
+                ? (voter.getNickname() != null ? voter.getNickname() : voter.getUsername())
+                : "匿名";
+        roomManager.broadcast(id, WsMessage.vote(id, voterName, candidate.getName(), group.getCandidates()));
+
         return ApiResponse.ok(group);
     }
 

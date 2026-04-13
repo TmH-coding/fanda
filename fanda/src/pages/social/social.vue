@@ -12,7 +12,7 @@
       <fd-empty icon="🤝" text="暂时没有拼饭局" btn-text="发起一个" @action="showCreate = true" />
     </view>
 
-    <view v-for="group in socialStore.openGroups" :key="group.id" class="group-card fd-card">
+    <view v-for="group in socialStore.openGroups" :key="group.id" class="group-card fd-card" @tap="goDetail(group.id)">
       <view class="group-header">
         <text class="group-avatar">{{ group.avatar }}</text>
         <view class="group-creator">
@@ -91,6 +91,10 @@ const form = ref({
   location: '',
   maxPeople: '4',
 })
+
+function goDetail(id) {
+  uni.navigateTo({ url: `/pages/social-detail/social-detail?id=${id}` })
+}
 
 function votePercent(group, candidate) {
   const total = Object.values(group.votes).reduce((s, v) => s + v, 0)
