@@ -7,6 +7,15 @@ spring:
     username: root
     password: ${DB_PASSWORD:tmh123}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:your-dashscope-api-key-here}
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.7
+          max-tokens: 2048
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -26,3 +35,4 @@ jwt:
 logging:
   level:
     com.fanda: DEBUG
+    org.springframework.ai: DEBUG

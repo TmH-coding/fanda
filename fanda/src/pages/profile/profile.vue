@@ -100,6 +100,10 @@
     <!-- 数据管理 -->
     <view class="section fd-card">
       <text class="section-title">⚙️ 数据管理</text>
+      <view class="menu-item" @tap="goAi">
+        <text class="menu-item-label">🤖 AI 饮食顾问</text>
+        <text class="menu-item-arrow">›</text>
+      </view>
       <view class="menu-item" @tap="goStats">
         <text class="menu-item-label">📊 我的报告</text>
         <text class="menu-item-arrow">›</text>
@@ -161,6 +165,10 @@ const userNickname = computed(() => {
 
 function goStats() {
   uni.navigateTo({ url: '/pages/stats/stats' })
+}
+
+function goAi() {
+  uni.navigateTo({ url: '/pages/ai/ai' })
 }
 
 function onLogout() {
