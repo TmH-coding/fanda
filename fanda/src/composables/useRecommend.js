@@ -45,21 +45,63 @@ export function useRecommend() {
     })
   })
 
-  // 转盘项目列表（最多显示12个）
+  // 计算每道菜的推荐权重
+  function computeWeights(pool) {
+    const recent7Ids = new Set(recordStore.recentFoodIds(7))
+    const recent14Ids = new Set(recordStore.recentFoodIds(14))
+    const favoriteIds = new Set(prefStore.preference.favorites || [])
+
+    return pool.map((food) => {
+      let w = 1.0
+      if (recent7Ids.has(food.id)) {
+        w = 0.3  // 近7天吃过：降权
+      } else if (recent14Ids.has(food.id)) {
+        w = 0.7  // 近14天吃过：轻微降权
+      }
+      if (favoriteIds.has(food.id)) {
+        w *= 1.2  // 收藏菜品：小幅加权
+      }
+      return w
+    })
+  }
+
+  // 转盘项目列表（最多显示12个，按权重优先展示）
   const wheelItems = computed(() => {
     const pool = candidates.value
     if (pool.length <= 12) return pool
-    // 随机挑12个
-    const shuffled = [...pool].sort(() => Math.random() - 0.5)
-    return shuffled.slice(0, 12)
+    // 按权重加权洗牌，高权重菜品更容易出现在转盘上
+    const weights = computeWeights(pool)
+    const indexed = pool.map((f, i) => ({ food: f, w: weights[i] }))
+    const result = []
+    const remaining = [...indexed]
+    while (result.length < 12 && remaining.length > 0) {
+      const total = remaining.reduce((s, x) => s + x.w, 0)
+      let rand = Math.random() * total
+      for (let i = 0; i < remaining.length; i++) {
+        rand -= remaining[i].w
+        if (rand <= 0) {
+          result.push(remaining[i].food)
+          remaining.splice(i, 1)
+          break
+        }
+      }
+    }
+    return result
   })
 
-  // 随机推荐一个
+  // 加权随机推荐一个
   function getRandomFood() {
     const pool = candidates.value
     if (pool.length === 0) return null
-    const idx = Math.floor(Math.random() * pool.length)
-    return pool[idx]
+
+    const weights = computeWeights(pool)
+    const total = weights.reduce((s, w) => s + w, 0)
+    let rand = Math.random() * total
+    for (let i = 0; i < pool.length; i++) {
+      rand -= weights[i]
+      if (rand <= 0) return pool[i]
+    }
+    return pool[pool.length - 1]
   }
 
   // 开始旋转

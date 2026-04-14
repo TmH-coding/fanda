@@ -392,6 +392,7 @@ fd_social_group (1) ──→ (N) fd_social_candidate / fd_social_member / fd_so
 | POST | `/api/social/groups` | 发起拼饭 |
 | POST | `/api/social/groups/{id}/join` | 加入拼饭 |
 | POST | `/api/social/groups/{id}/vote` | 投票 |
+| GET | `/api/social/groups/{id}/bill` | 获取AA账单（满员后可用） |
 
 **发起拼饭请求体**
 ```json

@@ -84,6 +84,34 @@
         </view>
       </view>
 
+      <!-- AA账单 -->
+      <view class="section fd-card" v-if="group.status === 'full' || group.status === 'closed'">
+        <text class="section-title">🧾 AA账单</text>
+        <view v-if="bill" class="bill-wrap">
+          <view class="bill-winner">
+            <text class="bill-label">胜出餐厅</text>
+            <text class="bill-value bill-winner-name">🏆 {{ bill.winner }}</text>
+          </view>
+          <view class="bill-row">
+            <text class="bill-label">参与人数</text>
+            <text class="bill-value">{{ bill.memberCount }}人</text>
+          </view>
+          <view class="bill-row">
+            <text class="bill-label">人均预估</text>
+            <text class="bill-value bill-amount">¥{{ bill.perPerson }}</text>
+          </view>
+          <view class="bill-divider" />
+          <view class="bill-row bill-total-row">
+            <text class="bill-label">合计预估</text>
+            <text class="bill-value bill-total">¥{{ bill.totalEstimate }}</text>
+          </view>
+          <text class="bill-tip">* 账单为预估金额，请实际结账后手动调整</text>
+        </view>
+        <view v-else class="bill-loading">
+          <text class="fd-text-secondary">计算中...</text>
+        </view>
+      </view>
+
       <!-- 实时消息 -->
       <view class="section fd-card">
         <view class="chat-header">
@@ -133,6 +161,7 @@ import FdNavBar from '@/components/common/fd-nav-bar.vue'
 const props = defineProps({ groupId: { type: [String, Number], default: null } })
 
 const group = ref(null)
+const bill = ref(null)
 const joining = ref(false)
 const hasVoted = ref(false)
 const votedCandidateId = ref(null)
@@ -181,8 +210,19 @@ async function loadGroup() {
   try {
     const data = await get(`/api/social/groups/${groupId.value}`)
     group.value = data
+    if (data.status === 'full' || data.status === 'closed') {
+      loadBill()
+    }
   } catch (e) {
     uni.showToast({ title: '加载失败', icon: 'none' })
+  }
+}
+
+async function loadBill() {
+  try {
+    bill.value = await get(`/api/social/groups/${groupId.value}/bill`)
+  } catch (e) {
+    console.warn('[Bill] 加载AA账单失败', e)
   }
 }
 
@@ -243,9 +283,9 @@ function connectWs() {
       if (msg.type === 'VOTE' && msg.data && group.value) {
         group.value.candidates = msg.data
       }
-      // 加入事件：人数+1
+      // 加入事件：人数+1，满员时加载账单
       if (msg.type === 'JOIN' && group.value) {
-        loadGroup()
+        await loadGroup()
       }
       addMessage(msg)
     }
@@ -349,6 +389,20 @@ onUnmounted(() => {
 .member-item { display: flex; flex-direction: column; align-items: center; gap: 8rpx; }
 .member-avatar { font-size: 48rpx; }
 .member-id { font-size: $fd-font-xs; color: $fd-text-secondary; }
+
+/* AA账单 */
+.bill-wrap { display: flex; flex-direction: column; gap: 16rpx; }
+.bill-row { display: flex; justify-content: space-between; align-items: center; }
+.bill-winner { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16rpx; border-bottom: 2rpx solid $fd-border; margin-bottom: 8rpx; }
+.bill-label { font-size: $fd-font-sm; color: $fd-text-secondary; }
+.bill-value { font-size: $fd-font-sm; color: $fd-text; font-weight: 500; }
+.bill-winner-name { font-size: $fd-font-base; font-weight: 700; color: $fd-primary; }
+.bill-amount { color: $fd-primary; }
+.bill-divider { height: 2rpx; background: $fd-border; margin: 8rpx 0; }
+.bill-total-row { }
+.bill-total { font-size: $fd-font-md; font-weight: 800; color: $fd-primary; }
+.bill-tip { display: block; font-size: $fd-font-xs; color: $fd-text-light; margin-top: 12rpx; }
+.bill-loading { padding: 20rpx; text-align: center; }
 
 /* 聊天 */
 .chat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }

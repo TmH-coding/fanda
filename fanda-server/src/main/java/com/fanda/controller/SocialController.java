@@ -16,8 +16,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/social/groups")
@@ -188,6 +192,38 @@ public class SocialController {
         roomManager.broadcast(id, WsMessage.vote(id, voterName, candidate.getName(), group.getCandidates()));
 
         return ApiResponse.ok(group);
+    }
+
+    @GetMapping("/{id}/bill")
+    public ApiResponse<Map<String, Object>> getBill(@PathVariable Long id) {
+        SocialGroup group = socialGroupMapper.selectById(id);
+        if (group == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+
+        List<SocialMember> members = socialMemberMapper.selectList(
+                new LambdaQueryWrapper<SocialMember>().eq(SocialMember::getGroupId, id));
+        List<SocialCandidate> candidates = socialCandidateMapper.selectList(
+                new LambdaQueryWrapper<SocialCandidate>().eq(SocialCandidate::getGroupId, id)
+                        .orderByDesc(SocialCandidate::getVotes));
+
+        int memberCount = members.isEmpty() ? 1 : members.size();
+
+        // 找出得票最多的候选（AA账单基于胜出餐厅，预估人均50元）
+        String winner = candidates.isEmpty() ? "待定" : candidates.get(0).getName();
+        // 预估人均消费：默认50元，可根据实际扩展
+        BigDecimal perPersonEstimate = new BigDecimal("50.00");
+        BigDecimal totalEstimate = perPersonEstimate.multiply(BigDecimal.valueOf(memberCount));
+
+        Map<String, Object> bill = new HashMap<>();
+        bill.put("groupId", id);
+        bill.put("groupTitle", group.getTitle());
+        bill.put("winner", winner);
+        bill.put("memberCount", memberCount);
+        bill.put("perPerson", perPersonEstimate);
+        bill.put("totalEstimate", totalEstimate);
+        bill.put("members", members);
+        bill.put("status", group.getStatus());
+
+        return ApiResponse.ok(bill);
     }
 
     private void loadChildren(SocialGroup group) {
