@@ -31,7 +31,10 @@
       <view v-for="record in dayRecords" :key="record.id" class="record-card fd-card">
         <view class="record-header">
           <text class="record-meal">{{ mealLabel(record.mealType) }}</text>
-          <text class="record-cost">¥{{ record.cost }}</text>
+          <view class="record-header-right">
+            <text class="record-cost">¥{{ record.cost }}</text>
+            <text class="record-del" @tap="deleteRecord(record.id)">×</text>
+          </view>
         </view>
         <text class="record-food">{{ record.foodName }}</text>
         <view v-if="record.nutrition" class="record-tags">
@@ -94,6 +97,19 @@ function nutritionLabel(key) {
 }
 
 function selectDay(date) { selectedDate.value = date }
+
+async function deleteRecord(id) {
+  uni.showModal({
+    title: '删除记录',
+    content: '确认删除这条用餐记录？',
+    success: async (res) => {
+      if (res.confirm) {
+        await recordStore.remove(id)
+        uni.showToast({ title: '已删除', icon: 'success' })
+      }
+    }
+  })
+}
 
 function prevMonth() {
   if (month.value === 1) { year.value--; month.value = 12 }
@@ -204,10 +220,21 @@ onMounted(async () => {
   font-size: $fd-font-sm;
   color: $fd-text-secondary;
 }
+.record-header-right {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+}
 .record-cost {
   font-size: $fd-font-base;
   font-weight: 700;
   color: $fd-primary;
+}
+.record-del {
+  font-size: 40rpx;
+  color: $fd-text-light;
+  padding: 0 8rpx;
+  &:active { color: $fd-danger; }
 }
 .record-food {
   font-size: $fd-font-md;

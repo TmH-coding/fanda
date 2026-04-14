@@ -60,7 +60,10 @@
           <text class="expense-desc">{{ item.description }}</text>
           <text class="expense-date">{{ item.date }} · {{ mealLabel(item.mealType) }}</text>
         </view>
-        <text class="expense-amount">-¥{{ item.amount }}</text>
+        <view class="expense-right">
+          <text class="expense-amount">-¥{{ item.amount }}</text>
+          <text class="expense-delete" @tap="deleteExpense(item.id)">×</text>
+        </view>
       </view>
     </view>
   </view>
@@ -86,6 +89,19 @@ const ringStyle = computed(() => {
 })
 
 function mealLabel(type) { return mealTypeLabel(type) }
+
+async function deleteExpense(id) {
+  uni.showModal({
+    title: '删除消费',
+    content: '确认删除这条消费记录？',
+    success: async (res) => {
+      if (res.confirm) {
+        await budgetStore.removeExpense(id)
+        uni.showToast({ title: '已删除', icon: 'success' })
+      }
+    }
+  })
+}
 
 function saveBudget() {
   const val = Number(monthlyInput.value)
@@ -220,9 +236,20 @@ onMounted(async () => {
   color: $fd-text-light;
   margin-top: 4rpx;
 }
+.expense-right {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+}
 .expense-amount {
   font-size: $fd-font-base;
   font-weight: 700;
   color: $fd-danger;
+}
+.expense-delete {
+  font-size: 40rpx;
+  color: $fd-text-light;
+  padding: 0 8rpx;
+  &:active { color: $fd-danger; }
 }
 </style>

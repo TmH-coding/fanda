@@ -52,5 +52,10 @@ export const useBudgetStore = defineStore('budget', {
       await service.addExpense(expense)
       this.expenses.push(expense)
     },
+    async removeExpense(id) {
+      const service = getService('budget')
+      await service.deleteExpense(id)
+      this.expenses = this.expenses.filter((e) => e.id !== id)
+    },
   },
 })

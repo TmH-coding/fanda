@@ -12,8 +12,18 @@
       <text class="greeting__sub">{{ mealLabel }}吃什么？转一转就知道了！</text>
     </view>
 
+    <!-- 转盘无候选时提示 -->
+    <view v-if="candidates.length === 0 && !isSpinning" class="empty-hint fd-card">
+      <text class="empty-hint__icon">🤔</text>
+      <text class="empty-hint__text">没有合适的菜了</text>
+      <text class="empty-hint__sub">试试清除排除标签，或调整偏好设置</text>
+      <view class="empty-hint__btn" @tap="excludedCategories = []">
+        <text>清除排除 🗑️</text>
+      </view>
+    </view>
+
     <!-- 转盘 -->
-    <view v-if="!hasResult" class="wheel-section">
+    <view v-if="!hasResult && candidates.length > 0" class="wheel-section">
       <fd-wheel
         :items="wheelItems"
         :spinning="isSpinning"
@@ -54,6 +64,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRecommend } from '@/composables/useRecommend'
 import { usePreferenceStore } from '@/stores/modules/preference'
+import { useBudgetStore } from '@/stores/modules/budget'
 import { mealTypeLabel } from '@/utils/date'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdWheel from '@/components/recommend/fd-wheel.vue'
@@ -77,6 +88,7 @@ const {
 } = useRecommend()
 
 const prefStore = usePreferenceStore()
+const budgetStore = useBudgetStore()
 const targetIndex = ref(0)
 
 const mealLabel = computed(() => mealTypeLabel(mealType.value))
@@ -102,9 +114,13 @@ function onSpin() {
   }
 }
 
-function onConfirm(cost) {
-  confirmChoice(cost)
-  uni.showToast({ title: '已记录 ✅', icon: 'none' })
+async function onConfirm(cost) {
+  await confirmChoice(cost)
+  if (budgetStore.isOverBudget) {
+    uni.showToast({ title: '⚠️ 本月预算已超支！', icon: 'none', duration: 2500 })
+  } else {
+    uni.showToast({ title: '已记录 ✅', icon: 'none' })
+  }
 }
 
 function onReroll() {
@@ -121,6 +137,24 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+.empty-hint {
+  margin: $fd-space-md;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $fd-space-xl $fd-space-md;
+  gap: $fd-space-sm;
+  &__icon { font-size: 80rpx; }
+  &__text { font-size: $fd-font-lg; font-weight: 700; color: $fd-text; }
+  &__sub { font-size: $fd-font-sm; color: $fd-text-secondary; text-align: center; }
+  &__btn {
+    margin-top: $fd-space-sm;
+    @include fd-btn;
+    padding: 16rpx 40rpx;
+    font-size: $fd-font-sm;
+  }
+}
+
 .header-meal {
   font-size: $fd-font-sm;
   color: $fd-primary;
