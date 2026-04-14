@@ -5,6 +5,11 @@
       <text class="result__title">今天就吃</text>
       <text class="result__name">{{ food.name }}</text>
 
+      <!-- 推荐理由 -->
+      <view v-if="reason" class="result__reason">
+        <text class="result__reason-text">{{ reason }}</text>
+      </view>
+
       <view class="result__info">
         <view class="result__tag">
           <text>{{ food.category === 'chinese' ? '🍚 中式' : food.category === 'western' ? '🍔 西式' : food.category === 'japanese' ? '🍣 日韩' : food.category === 'fastfood' ? '🍟 快餐' : food.category === 'light' ? '🥗 轻食' : food.category === 'snack' ? '🥟 小吃' : food.category === 'noodle' ? '🍜 面食' : '🍲 火锅' }}</text>
@@ -53,6 +58,7 @@ import { ref, computed } from 'vue'
 const props = defineProps({
   food: { type: Object, default: null },
   isFavorite: { type: Boolean, default: false },
+  reason: { type: String, default: '' },
 })
 
 const emit = defineEmits(['confirm', 'reroll', 'toggleFavorite'])
@@ -98,6 +104,20 @@ function onConfirm() {
     font-weight: 800;
     color: $fd-primary;
     margin: $fd-space-sm 0;
+  }
+
+  &__reason {
+    background: rgba($fd-accent, 0.12);
+    border-radius: $fd-radius;
+    padding: 16rpx 24rpx;
+    margin: $fd-space-xs 0 $fd-space-sm;
+    width: 100%;
+  }
+  &__reason-text {
+    font-size: $fd-font-sm;
+    color: $fd-accent;
+    text-align: center;
+    display: block;
   }
 
   &__info {

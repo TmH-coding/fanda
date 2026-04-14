@@ -96,16 +96,32 @@
             <text class="bill-label">参与人数</text>
             <text class="bill-value">{{ bill.memberCount }}人</text>
           </view>
-          <view class="bill-row">
-            <text class="bill-label">人均预估</text>
-            <text class="bill-value bill-amount">¥{{ bill.perPerson }}</text>
+
+          <!-- 实际金额输入 -->
+          <view class="bill-actual-row">
+            <text class="bill-label">实际总价</text>
+            <view class="bill-actual-input-wrap">
+              <text class="bill-currency">¥</text>
+              <input
+                class="bill-actual-input"
+                type="digit"
+                :value="actualTotal"
+                :placeholder="String(bill.totalEstimate)"
+                @input="onActualInput"
+              />
+            </view>
+            <view class="bill-calc-btn" @tap="calcAA">
+              <text>计算</text>
+            </view>
           </view>
+
           <view class="bill-divider" />
           <view class="bill-row bill-total-row">
-            <text class="bill-label">合计预估</text>
-            <text class="bill-value bill-total">¥{{ bill.totalEstimate }}</text>
+            <text class="bill-label">人均 AA</text>
+            <text class="bill-value bill-total">¥{{ aaPerPerson }}</text>
           </view>
-          <text class="bill-tip">* 账单为预估金额，请实际结账后手动调整</text>
+          <text v-if="actualTotal" class="bill-tip">基于实际总价 ¥{{ actualTotal }} 计算</text>
+          <text v-else class="bill-tip">* 输入实际总价后点击「计算」得出人均</text>
         </view>
         <view v-else class="bill-loading">
           <text class="fd-text-secondary">计算中...</text>
@@ -162,6 +178,8 @@ const props = defineProps({ groupId: { type: [String, Number], default: null } }
 
 const group = ref(null)
 const bill = ref(null)
+const actualTotal = ref('')       // 用户输入的实际总价
+const aaPerPerson = ref('--')     // 计算出的人均
 const joining = ref(false)
 const hasVoted = ref(false)
 const votedCandidateId = ref(null)
@@ -221,9 +239,26 @@ async function loadGroup() {
 async function loadBill() {
   try {
     bill.value = await get(`/api/social/groups/${groupId.value}/bill`)
+    // 初始化人均为预估值
+    aaPerPerson.value = bill.value.perPerson
   } catch (e) {
     console.warn('[Bill] 加载AA账单失败', e)
   }
+}
+
+function onActualInput(e) {
+  actualTotal.value = e.detail.value
+}
+
+function calcAA() {
+  const total = Number(actualTotal.value)
+  if (!total || !bill.value?.memberCount) {
+    uni.showToast({ title: '请输入有效金额', icon: 'none' })
+    return
+  }
+  const per = Math.ceil(total / bill.value.memberCount)
+  aaPerPerson.value = per
+  uni.showToast({ title: `人均 ¥${per}`, icon: 'none' })
 }
 
 async function joinGroup() {
@@ -399,10 +434,43 @@ onUnmounted(() => {
 .bill-winner-name { font-size: $fd-font-base; font-weight: 700; color: $fd-primary; }
 .bill-amount { color: $fd-primary; }
 .bill-divider { height: 2rpx; background: $fd-border; margin: 8rpx 0; }
-.bill-total-row { }
 .bill-total { font-size: $fd-font-md; font-weight: 800; color: $fd-primary; }
 .bill-tip { display: block; font-size: $fd-font-xs; color: $fd-text-light; margin-top: 12rpx; }
 .bill-loading { padding: 20rpx; text-align: center; }
+.bill-actual-row {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+}
+.bill-actual-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 0 16rpx;
+  height: 64rpx;
+}
+.bill-currency {
+  font-size: $fd-font-base;
+  color: $fd-text-secondary;
+  margin-right: 8rpx;
+}
+.bill-actual-input {
+  flex: 1;
+  font-size: $fd-font-base;
+  font-weight: 600;
+  color: $fd-text;
+}
+.bill-calc-btn {
+  background: $fd-primary;
+  color: #fff;
+  border-radius: $fd-radius-sm;
+  padding: 12rpx 28rpx;
+  font-size: $fd-font-sm;
+  font-weight: 600;
+  &:active { opacity: 0.85; }
+}
 
 /* 聊天 */
 .chat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }

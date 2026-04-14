@@ -14,6 +14,7 @@ export function useRecommend() {
 
   const excludedCategories = ref([])
   const currentFood = ref(null)
+  const recommendReason = ref('')   // 推荐理由
   const isSpinning = ref(false)
   const hasResult = ref(false)
 
@@ -89,7 +90,36 @@ export function useRecommend() {
     return result
   })
 
-  // 加权随机推荐一个
+  // 生成推荐理由
+  function buildReason(food) {
+    const favoriteIds = new Set(prefStore.preference.favorites || [])
+    const allRecords = recordStore.records
+    const foodRecords = allRecords.filter(r => r.foodId === food.id)
+
+    if (favoriteIds.has(food.id)) {
+      return `这是你的收藏菜品，今天再来一次 ❤️`
+    }
+
+    if (foodRecords.length === 0) {
+      return `你还没吃过${food.name}，今天尝个鲜 🆕`
+    }
+
+    const lastDate = foodRecords
+      .map(r => r.date)
+      .sort()
+      .reverse()[0]
+    const days = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000)
+
+    if (days >= 14) {
+      return `上次吃${food.name}是 ${days} 天前，久违了 😋`
+    }
+    if (days >= 7) {
+      return `距上次吃${food.name}已过去 ${days} 天，正好换换口味 🎯`
+    }
+    return `${food.name}符合你的口味偏好，今天就它了 👍`
+  }
+
+  // 加权随机推荐一个，同时生成推荐理由
   function getRandomFood() {
     const pool = candidates.value
     if (pool.length === 0) return null
@@ -99,9 +129,14 @@ export function useRecommend() {
     let rand = Math.random() * total
     for (let i = 0; i < pool.length; i++) {
       rand -= weights[i]
-      if (rand <= 0) return pool[i]
+      if (rand <= 0) {
+        recommendReason.value = buildReason(pool[i])
+        return pool[i]
+      }
     }
-    return pool[pool.length - 1]
+    const food = pool[pool.length - 1]
+    recommendReason.value = buildReason(food)
+    return food
   }
 
   // 开始旋转
@@ -171,6 +206,7 @@ export function useRecommend() {
   return {
     excludedCategories,
     currentFood,
+    recommendReason,
     isSpinning,
     hasResult,
     mealType,
