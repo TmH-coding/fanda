@@ -2,18 +2,65 @@
   <view class="fd-page">
     <fd-nav-bar title="AI 饮食顾问" :show-back="true" />
 
-    <!-- 功能卡片区 -->
+    <!-- 功能卡片区 2×2 -->
     <view class="feature-grid">
       <view class="feature-card" @tap="startRecommend">
         <text class="feature-icon">🍽️</text>
         <text class="feature-name">今日推荐</text>
-        <text class="feature-desc">AI 结合你的偏好智能选餐</text>
+        <text class="feature-desc">AI 智能选餐</text>
       </view>
       <view class="feature-card" @tap="loadNutrition">
         <text class="feature-icon">📊</text>
         <text class="feature-name">营养分析</text>
-        <text class="feature-desc">30天饮食健康报告</text>
+        <text class="feature-desc">30天健康报告</text>
       </view>
+      <view class="feature-card" @tap="loadWeeklyReport">
+        <text class="feature-icon">📅</text>
+        <text class="feature-name">每周周报</text>
+        <text class="feature-desc">本周饮食总结</text>
+      </view>
+      <view class="feature-card" @tap="loadBudgetAdvice">
+        <text class="feature-icon">💰</text>
+        <text class="feature-name">预算建议</text>
+        <text class="feature-desc">AI 帮你定预算</text>
+      </view>
+    </view>
+
+    <!-- 图片识别入口 -->
+    <view class="photo-banner" @tap="pickImage">
+      <text class="photo-banner-icon">📷</text>
+      <view class="photo-banner-text">
+        <text class="photo-banner-title">拍照识别菜品</text>
+        <text class="photo-banner-desc">拍一张菜的照片，AI 自动帮你记录</text>
+      </view>
+      <text class="photo-banner-arrow">›</text>
+    </view>
+
+    <!-- 图片识别结果 -->
+    <view v-if="photoResult" class="report-card fd-card">
+      <view class="report-header">
+        <text class="report-title">📷 识别结果</text>
+        <text class="report-close" @tap="photoResult = ''">×</text>
+      </view>
+      <text class="report-content">{{ photoResult }}</text>
+    </view>
+
+    <!-- 每周周报展示 -->
+    <view v-if="weeklyReport" class="report-card fd-card">
+      <view class="report-header">
+        <text class="report-title">📅 本周营养周报</text>
+        <text class="report-close" @tap="weeklyReport = ''">×</text>
+      </view>
+      <text class="report-content">{{ weeklyReport }}</text>
+    </view>
+
+    <!-- 预算建议展示 -->
+    <view v-if="budgetAdvice" class="report-card fd-card">
+      <view class="report-header">
+        <text class="report-title">💰 预算建议</text>
+        <text class="report-close" @tap="budgetAdvice = ''">×</text>
+      </view>
+      <text class="report-content">{{ budgetAdvice }}</text>
     </view>
 
     <!-- 营养报告展示 -->
@@ -87,13 +134,16 @@
           <text>{{ streaming ? '...' : '发送' }}</text>
         </view>
       </view>
+      <view v-if="messages.length > 0" class="chat-clear" @tap="clearHistory">
+        <text class="chat-clear-text">清除对话记录</text>
+      </view>
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { post, get } from '@/utils/http'
+import { ref } from 'vue'
+import { post, get, del } from '@/utils/http'
 import { getToken } from '@/utils/http'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 
@@ -105,6 +155,9 @@ const scrollTop = ref(0)
 const loading = ref(false)
 const nutritionReport = ref('')
 const recommendResult = ref('')
+const weeklyReport = ref('')
+const budgetAdvice = ref('')
+const photoResult = ref('')
 const scene = ref('lunch')
 
 const scenes = [
@@ -112,12 +165,6 @@ const scenes = [
   { key: 'lunch', label: '午餐' },
   { key: 'dinner', label: '晚餐' },
 ]
-
-// 获取 base URL（适配 H5 代理）
-function getBaseUrl() {
-  // H5 开发模式下走 Vite 代理，直接用空字符串
-  return ''
-}
 
 async function sendMessage() {
   const text = inputText.value.trim()
@@ -132,7 +179,6 @@ async function sendMessage() {
 
   try {
     const token = getToken()
-    // 使用 uni.request 的流式响应（H5 模式下用 fetch SSE）
     await streamChat(text, token)
   } catch (e) {
     messages.value.push({ role: 'assistant', content: '小饭暂时不在线，请稍后再试 😅' })
@@ -142,8 +188,25 @@ async function sendMessage() {
   }
 }
 
+async function clearHistory() {
+  uni.showModal({
+    title: '清除对话',
+    content: '确定清除所有对话记录吗？',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          await del('/api/ai/chat/history')
+        } catch {
+          // 忽略网络错误，仅清除本地
+        }
+        messages.value = []
+        streamingText.value = ''
+      }
+    },
+  })
+}
+
 async function streamChat(message, token) {
-  // H5 环境使用 fetch 支持 SSE 流式读取
   const response = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: {
@@ -153,9 +216,7 @@ async function streamChat(message, token) {
     body: JSON.stringify({ message }),
   })
 
-  if (!response.ok) {
-    throw new Error('请求失败')
-  }
+  if (!response.ok) throw new Error('请求失败')
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
@@ -165,7 +226,6 @@ async function streamChat(message, token) {
     const { done, value } = await reader.read()
     if (done) break
     const chunk = decoder.decode(value, { stream: true })
-    // SSE 格式：data: xxx\n\n
     const lines = chunk.split('\n')
     for (const line of lines) {
       if (line.startsWith('data:')) {
@@ -179,7 +239,6 @@ async function streamChat(message, token) {
     }
   }
 
-  // 流结束后转为正式消息
   if (fullText) {
     messages.value.push({ role: 'assistant', content: fullText })
   }
@@ -192,7 +251,7 @@ async function startRecommend() {
   try {
     const res = await post('/api/ai/recommend', { scene: scenes.find(s => s.key === scene.value)?.label || '午餐' })
     recommendResult.value = res
-  } catch (e) {
+  } catch {
     uni.showToast({ title: '推荐获取失败', icon: 'none' })
   } finally {
     loading.value = false
@@ -205,8 +264,34 @@ async function loadNutrition() {
   try {
     const res = await get('/api/ai/nutrition')
     nutritionReport.value = res
-  } catch (e) {
+  } catch {
     uni.showToast({ title: '营养分析失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadWeeklyReport() {
+  loading.value = true
+  weeklyReport.value = ''
+  try {
+    const res = await get('/api/ai/weekly-report')
+    weeklyReport.value = res
+  } catch {
+    uni.showToast({ title: '周报获取失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadBudgetAdvice() {
+  loading.value = true
+  budgetAdvice.value = ''
+  try {
+    const res = await get('/api/ai/budget-advice')
+    budgetAdvice.value = res
+  } catch {
+    uni.showToast({ title: '预算建议获取失败', icon: 'none' })
   } finally {
     loading.value = false
   }
@@ -218,6 +303,61 @@ function changeScene(key) {
   startRecommend()
 }
 
+// ── 图片识别 ──────────────────────────────────────────
+function pickImage() {
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['camera', 'album'],
+    success: (res) => {
+      const filePath = res.tempFilePaths[0]
+      uploadAndRecognize(filePath)
+    },
+  })
+}
+
+async function uploadAndRecognize(filePath) {
+  loading.value = true
+  photoResult.value = ''
+  uni.showLoading({ title: '识别中...' })
+  try {
+    const token = getToken()
+    // 先将图片转为 base64
+    const base64 = await fileToBase64(filePath)
+    const res = await post('/api/ai/recognize-food', { imageBase64: base64 })
+    photoResult.value = res
+  } catch {
+    uni.showToast({ title: '识别失败，请重试', icon: 'none' })
+  } finally {
+    loading.value = false
+    uni.hideLoading()
+  }
+}
+
+function fileToBase64(filePath) {
+  return new Promise((resolve, reject) => {
+    // #ifdef H5
+    fetch(filePath)
+      .then(r => r.blob())
+      .then(blob => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    // #endif
+    // #ifndef H5
+    const fs = uni.getFileSystemManager()
+    fs.readFile({
+      filePath,
+      encoding: 'base64',
+      success: (r) => resolve(r.data),
+      fail: reject,
+    })
+    // #endif
+  })
+}
+
 function scrollToBottom() {
   setTimeout(() => { scrollTop.value = 999999 }, 50)
 }
@@ -225,23 +365,23 @@ function scrollToBottom() {
 
 <style lang="scss" scoped>
 .feature-grid {
-  display: flex;
-  gap: $fd-space-base;
-  padding: $fd-space-md;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $fd-space-sm;
+  padding: $fd-space-md $fd-space-md $fd-space-sm;
 }
 .feature-card {
-  flex: 1;
   background: $fd-card-bg;
   border-radius: $fd-radius;
   box-shadow: $fd-shadow;
-  padding: $fd-space-md;
+  padding: $fd-space-md $fd-space-sm;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10rpx;
+  gap: 8rpx;
   &:active { opacity: 0.85; transform: scale(0.97); }
 }
-.feature-icon { font-size: 64rpx; }
+.feature-icon { font-size: 56rpx; }
 .feature-name {
   font-size: $fd-font-base;
   font-weight: 700;
@@ -251,6 +391,38 @@ function scrollToBottom() {
   font-size: $fd-font-xs;
   color: $fd-text-secondary;
   text-align: center;
+}
+
+.photo-banner {
+  margin: 0 $fd-space-md $fd-space-base;
+  background: linear-gradient(135deg, rgba($fd-primary, 0.08), rgba($fd-accent, 0.1));
+  border-radius: $fd-radius;
+  padding: $fd-space-base $fd-space-md;
+  display: flex;
+  align-items: center;
+  gap: $fd-space-base;
+  border: 2rpx solid rgba($fd-primary, 0.15);
+  &:active { opacity: 0.85; }
+}
+.photo-banner-icon { font-size: 56rpx; flex-shrink: 0; }
+.photo-banner-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.photo-banner-title {
+  font-size: $fd-font-base;
+  font-weight: 700;
+  color: $fd-text;
+}
+.photo-banner-desc {
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+}
+.photo-banner-arrow {
+  font-size: 40rpx;
+  color: $fd-text-light;
 }
 
 .report-card {
@@ -397,5 +569,14 @@ function scrollToBottom() {
     background: $fd-border;
     color: $fd-text-light;
   }
+}
+.chat-clear {
+  text-align: center;
+  padding-top: $fd-space-sm;
+  &:active { opacity: 0.7; }
+}
+.chat-clear-text {
+  font-size: $fd-font-xs;
+  color: $fd-text-light;
 }
 </style>

@@ -5,6 +5,7 @@ import com.fanda.mapper.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -20,9 +21,23 @@ public class DataInitializer implements CommandLineRunner {
     private final FoodNutritionMapper foodNutritionMapper;
     private final FoodAllergenMapper foodAllergenMapper;
     private final FoodMealTimeMapper foodMealTimeMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public void run(String... args) {
+        // 确保 fd_weekly_report 表存在
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS fd_weekly_report (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    week_start DATE NOT NULL,
+                    content MEDIUMTEXT,
+                    created_at DATETIME,
+                    deleted TINYINT DEFAULT 0,
+                    UNIQUE KEY uk_user_week (user_id, week_start)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+
         if (foodItemMapper.selectCount(null) > 0) {
             log.info("菜品数据已存在，跳过初始化");
             return;
