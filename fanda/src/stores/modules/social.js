@@ -11,6 +11,9 @@ export const useSocialStore = defineStore('social', {
     openGroups(state) {
       return state.groups.filter((g) => g.status === 'open')
     },
+    closedGroups(state) {
+      return state.groups.filter((g) => g.status === 'closed')
+    },
   },
 
   actions: {

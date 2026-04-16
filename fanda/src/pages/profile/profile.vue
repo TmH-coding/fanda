@@ -239,6 +239,9 @@
       <view class="fd-btn--outline" style="margin-top: 16rpx" @tap="clearData">
         <text>清除所有数据</text>
       </view>
+      <view class="fd-btn--outline export-data-btn" @tap="exportData">
+        <text>{{ exporting ? '导出中...' : '📤 导出本地数据' }}</text>
+      </view>
     </view>
 
     <!-- 退出登录 -->
@@ -561,6 +564,47 @@ function clearData() {
   })
 }
 
+// ── 数据导出 ───────────────────────────────────────────
+const exporting = ref(false)
+
+async function exportData() {
+  exporting.value = true
+  try {
+    const exportObj = {
+      exportedAt: new Date().toISOString(),
+      version: '1.0',
+      records: recordStore.records,
+      preferences: prefStore.$state,
+    }
+    const json = JSON.stringify(exportObj, null, 2)
+    // #ifdef H5
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `fanda-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    uni.showToast({ title: '已下载 JSON 文件', icon: 'success' })
+    // #endif
+    // #ifndef H5
+    const fs = uni.getFileSystemManager()
+    const filePath = `${uni.env.USER_DATA_PATH}/fanda-export-${Date.now()}.json`
+    fs.writeFileSync(filePath, json, 'utf8')
+    uni.shareFileMessage({
+      filePath,
+      fileName: 'fanda-export.json',
+      success: () => uni.showToast({ title: '导出成功', icon: 'success' }),
+      fail: () => uni.showToast({ title: `已保存到：${filePath}`, icon: 'none', duration: 3000 }),
+    })
+    // #endif
+  } catch (e) {
+    uni.showToast({ title: '导出失败', icon: 'none' })
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(async () => {
   await foodStore.load()
   prefStore.load()
@@ -857,6 +901,8 @@ onMounted(async () => {
   color: $fd-danger;
   font-weight: 600;
 }
+
+.export-data-btn { margin-top: 12rpx; }
 
 .sync-badge {
   display: flex;

@@ -97,6 +97,13 @@
       <text class="float-record-label">手动记录</text>
     </view>
 
+    <!-- 连续打卡徽章 -->
+    <view v-if="streakBadge" class="streak-badge" @tap="dismissStreakBadge">
+      <text class="streak-badge__icon">🔥</text>
+      <text class="streak-badge__text">{{ streakBadge }}</text>
+      <text class="streak-badge__close">×</text>
+    </view>
+
     <!-- 手动记录弹窗 -->
     <fd-modal v-model:visible="showManualRecord" title="手动记录用餐" @confirm="submitManualRecord">
       <view class="form-item">
@@ -176,6 +183,10 @@ const budgetStore = useBudgetStore()
 const recordStore = useRecordStore()
 const foodStore = useFoodStore()
 const targetIndex = ref(0)
+
+// 连续打卡徽章
+const streakBadge = ref('')
+function dismissStreakBadge() { streakBadge.value = '' }
 
 // 手动记录
 const showManualRecord = ref(false)
@@ -273,6 +284,14 @@ function onBlacklist(foodId) {
 onMounted(async () => {
   await init()
   await foodStore.load()
+  // 连续打卡提醒
+  const streak = recordStore.streak
+  if (streak >= 3) {
+    streakBadge.value = `已连续打卡 ${streak} 天，太棒了！`
+  } else if (streak === 0 && recordStore.records.length > 0) {
+    // 曾经有记录但昨天没打卡（断签）
+    streakBadge.value = '昨天没有记录，加油补上！'
+  }
 })
 </script>
 
@@ -435,6 +454,27 @@ onMounted(async () => {
 .float-record-label {
   font-size: $fd-font-sm;
   font-weight: 600;
+}
+
+/* 连续打卡徽章 */
+.streak-badge {
+  position: fixed;
+  top: 100rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: $fd-space-xs;
+  background: rgba(255, 107, 107, 0.95);
+  color: #fff;
+  border-radius: $fd-radius-round;
+  padding: 12rpx 28rpx;
+  z-index: 200;
+  box-shadow: 0 8rpx 32rpx rgba(255, 107, 107, 0.35);
+  &__icon { font-size: 32rpx; }
+  &__text { font-size: $fd-font-sm; font-weight: 600; }
+  &__close { font-size: 36rpx; opacity: 0.7; margin-left: 4rpx; }
+  &:active { opacity: 0.85; }
 }
 
 /* 手动记录弹窗表单 */

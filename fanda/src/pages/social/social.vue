@@ -86,6 +86,30 @@
       </view>
     </view>
 
+    <!-- 已结束的拼饭 -->
+    <view v-if="!listLoading && socialStore.closedGroups.length > 0" class="closed-section">
+      <text class="closed-section-title">已结束的拼饭</text>
+      <view v-for="group in socialStore.closedGroups" :key="group.id" class="group-card group-card--closed fd-card" @tap="goDetail(group.id)">
+        <view class="group-header">
+          <text class="group-avatar group-avatar--muted">{{ group.avatar }}</text>
+          <view class="group-creator">
+            <text class="group-name">{{ group.creator }}</text>
+            <text class="group-time">⏰ {{ group.time }}</text>
+          </view>
+          <view class="closed-badge">
+            <text class="closed-badge-text">已结束</text>
+          </view>
+        </view>
+        <text class="group-title group-title--muted">{{ group.title }}</text>
+        <text class="group-location">📍 {{ group.location }}</text>
+        <view class="closed-actions">
+          <view class="review-btn" @tap.stop="goReviews(group.id)">
+            <text>📝 看评价</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <!-- 发起拼饭弹窗 -->
     <fd-modal v-model:visible="showCreate" title="发起拼饭" @confirm="onCreate">
       <view class="form-item">
@@ -176,6 +200,10 @@ function formatMsgTime(createdAt) {
 
 function goDetail(id) {
   uni.navigateTo({ url: `/pages/social-detail/social-detail?id=${id}` })
+}
+
+function goReviews(id) {
+  uni.navigateTo({ url: `/pages/social-detail/social-detail?id=${id}&tab=reviews` })
 }
 
 function votePercent(group, candidate) {
@@ -432,6 +460,44 @@ onMounted(async () => {
   font-weight: 600;
   flex-shrink: 0;
   &:active { opacity: 0.85; }
+}
+
+/* 已结束拼饭 */
+.closed-section { margin-top: $fd-space-base; }
+.closed-section-title {
+  display: block;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  font-weight: 600;
+  padding: 0 $fd-space-md $fd-space-xs;
+}
+.group-card--closed {
+  opacity: 0.75;
+}
+.group-avatar--muted { filter: grayscale(60%); }
+.group-title--muted { color: $fd-text-secondary !important; }
+.closed-badge {
+  background: $fd-border;
+  border-radius: $fd-radius-round;
+  padding: 6rpx 18rpx;
+}
+.closed-badge-text {
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+}
+.closed-actions {
+  margin-top: $fd-space-sm;
+  display: flex;
+  justify-content: flex-end;
+}
+.review-btn {
+  background: rgba($fd-accent, 0.12);
+  color: $fd-accent;
+  border-radius: $fd-radius-round;
+  padding: 10rpx 28rpx;
+  font-size: $fd-font-sm;
+  font-weight: 600;
+  &:active { opacity: 0.8; }
 }
 
 /* 表单 */

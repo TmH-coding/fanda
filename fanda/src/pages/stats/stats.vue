@@ -48,6 +48,18 @@
           </view>
         </view>
 
+        <!-- 本月最常吃 Top3 -->
+        <view v-if="habitStats && habitStats.topFoods && habitStats.topFoods.length" class="top3-card">
+          <text class="top3-title">🍜 本月最常吃</text>
+          <view class="top3-list">
+            <view v-for="(food, i) in habitStats.topFoods.slice(0, 3)" :key="food.name" class="top3-item">
+              <text class="top3-rank" :class="'rank-' + (i + 1)">{{ ['🥇','🥈','🥉'][i] }}</text>
+              <text class="top3-name">{{ food.name }}</text>
+              <text class="top3-count">{{ food.count }}次</text>
+            </view>
+          </view>
+        </view>
+
         <!-- 按天柱状图 -->
         <text class="chart-title">每日消费 (元)</text>
         <view class="bar-chart">
@@ -616,6 +628,38 @@ function exportReport() {
   font-weight: 600;
   color: $fd-text-secondary;
   margin-bottom: 24rpx;
+}
+
+/* 消费概览 Top3 */
+.top3-card {
+  background: rgba($fd-primary, 0.05);
+  border-radius: $fd-radius-sm;
+  padding: $fd-space-sm $fd-space-base;
+  margin-bottom: $fd-space-base;
+}
+.top3-title {
+  display: block;
+  font-size: $fd-font-xs;
+  font-weight: 700;
+  color: $fd-text-secondary;
+  margin-bottom: $fd-space-xs;
+}
+.top3-list { display: flex; flex-direction: column; gap: 8rpx; }
+.top3-item {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+}
+.top3-rank { font-size: 32rpx; flex-shrink: 0; }
+.top3-name {
+  flex: 1;
+  font-size: $fd-font-sm;
+  font-weight: 600;
+  color: $fd-text;
+}
+.top3-count {
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
 }
 
 /* 柱状图 */

@@ -2,7 +2,7 @@
 
 > 记录当前已实现的完整功能与架构，供开发维护参考。
 >
-> 最后更新：2026-04-16（v2.2）
+> 最后更新：2026-04-16（v2.3）
 
 ---
 
@@ -376,6 +376,8 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
   - 支持餐次切换、花费输入、多选营养标签
 - 支持按日查看三餐列表（含评分）
 - **营养均衡提醒** — 检查近 3 天记录，若无任何蔬菜/水果营养标签，在日历顶部显示提示横幅
+- **滑动切换月份** — 日历网格监听 `touchstart`/`touchend`，横向 delta > 50px 触发上/下月切换
+- **长按快捷操作** — 长按记录卡片弹出底部菜单：删除、快速评分（5 星大图）、复制到今天（调用 `recordStore.add` 重新创建一条今日记录）
 
 ### 7.4 预算管家
 
@@ -394,6 +396,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 投票选餐（每人一票，防重投）
 - 加入/退出/解散
 - **拼饭留言板**（远程模式）— 每个拼饭卡片下方可展开留言板，懒加载（点击"查看留言 ›"触发），发送留言实时追加，支持最新 30 条消息
+- **已结束拼饭区** — 列表底部展示 `status=closed` 的拼饭，灰度样式区分，右下角"📝 看评价"按钮跳转详情页评价 Tab（`?tab=reviews`）；`socialStore` 新增 `closedGroups` getter
 
 ### 7.6 个人中心
 
@@ -415,6 +418,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - `pages/stats/stats.vue`
 - Tab 切换：概览 / 营养 / 餐次分布
 - 概览：总支出 / 日均 / 活跃天数
+- **本月最常吃 Top3 卡片** — 消费趋势 Tab 汇总数字下方展示 🥇🥈🥉 排名卡片，数据来源 `habitStats.topFoods`
 - 营养分布：各类型记录数柱状图
 - 餐次分布：早/中/晚/宵夜比例
 - **月度报告导出** — Canvas 绘制图片，保存到相册
@@ -496,6 +500,54 @@ for (const ach of newAchs) {
 ```text
 [我的饮食背景：【最常吃】黄焖鸡(8次)、麻辣烫(6次)；【不太喜欢】螺蛳粉（评分偏低）；【本月预算】¥1500，已花 ¥820，剩余 ¥680]
 ```
+
+### 7.14 首页连续打卡提醒徽章
+
+`pages/index/index.vue`
+
+`onMounted` 读取 `recordStore.streak`：
+
+- streak ≥ 3：顶部固定红色徽章"已连续打卡 N 天，太棒了！"
+- streak = 0 且有历史记录（昨天断签）：显示"昨天没有记录，加油补上！"
+- 点击徽章关闭（`dismissStreakBadge()`）
+
+### 7.15 饮食日历长按快捷操作
+
+`pages/calendar/calendar.vue`
+
+记录卡片 `@longpress="openRecordMenu(record)"` 弹出底部菜单：
+
+| 操作 | 行为 |
+| --- | --- |
+| 删除记录 | 等同于点击 × 删除 |
+| 快速评分 | 打开 5 星大图面板，确认后调用 `rateRecord` |
+| 复制到今天 | 以相同食物/餐次/费用创建一条今日新记录 |
+
+### 7.16 食物批量导入
+
+`pages/food-create/food-create.vue`
+
+页面底部"📋 批量导入"折叠面板：
+
+- 格式：每行 `名称,分类键,最低价,最高价`（价格可省略）
+- 实时预览解析结果（含错误提示），按行校验分类键是否在 `FOOD_CATEGORIES` 中
+- 导入时顺序调用 `POST /api/foods`，显示 `N/total` 进度，完成后刷新 food store
+
+### 7.17 本地数据 JSON 导出
+
+`pages/profile/profile.vue`
+
+"我的工具"区域新增"📤 导出本地数据"按钮：
+
+- 导出内容：`{ exportedAt, version, records, preferences }`
+- H5：创建 Blob 对象触发浏览器下载，文件名 `fanda-export-YYYY-MM-DD.json`
+- 小程序：写入用户数据目录后调用 `uni.shareFileMessage`；分享失败时显示文件路径
+
+### 7.18 统计概览 Top3 最常吃卡片
+
+`pages/stats/stats.vue`
+
+消费趋势 Tab 汇总数字行下方新增 Top3 卡片（`habitStats.topFoods.slice(0,3)`），以 🥇🥈🥉 emoji 展示排名、食物名、次数。数据由 `/api/stats/habit` 接口提供，本地实现按 `foodName` 统计频次。
 
 ---
 
@@ -596,8 +648,19 @@ budget: { addExpense: ..., removeExpense: ... }
 
 ---
 
-*文档版本: v2.2*
+*文档版本: v2.3*
 *更新日期: 2026-04-16*
+
+### 变更记录（v2.3）
+
+- 新增 7.14 首页连续打卡提醒徽章（streak ≥ 3 或断签提示）
+- 新增 7.15 饮食日历长按快捷操作（删除 / 快速评分 / 复制到今天）
+- 新增 7.16 食物批量导入（CSV 格式逐行解析 + 预览 + 进度）
+- 新增 7.17 本地数据 JSON 导出（H5 下载 / 小程序分享文件）
+- 新增 7.18 统计概览 Top3 最常吃卡片（消费趋势 Tab）
+- 7.3 饮食日历：滑动切换月份（touchstart/touchend）
+- 7.5 拼饭社交：已结束拼饭区域 + 看评价直达跳转；`socialStore` 新增 `closedGroups` getter
+- 7.7 数据统计报告：消费趋势 Tab 新增本月 Top3 卡片
 
 ### 变更记录（v2.2）
 

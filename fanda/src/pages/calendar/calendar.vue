@@ -21,7 +21,11 @@
     </view>
 
     <!-- 日历网格 -->
-    <view class="calendar-grid">
+    <view
+      class="calendar-grid"
+      @touchstart="onTouchStart"
+      @touchend="onTouchEnd"
+    >
       <view
         v-for="(day, i) in calendarDays"
         :key="i"
@@ -51,7 +55,7 @@
       <view v-else-if="dayRecords.length === 0" class="records-empty">
         <fd-empty icon="📝" text="这天还没有记录哦" btn-text="去记录" @action="openAddRecord" />
       </view>
-      <view v-for="record in dayRecords" :key="record.id" class="record-card fd-card">
+      <view v-for="record in dayRecords" :key="record.id" class="record-card fd-card" @longpress="openRecordMenu(record)">
         <view class="record-header">
           <text class="record-meal">{{ mealLabel(record.mealType) }}</text>
           <view class="record-header-right">
@@ -136,6 +140,51 @@
       :meal-time="addForm.mealType"
       @select="onFoodSelected"
     />
+
+    <!-- 长按快捷操作菜单 -->
+    <view v-if="menuRecord" class="record-menu-mask" @tap="menuRecord = null">
+      <view class="record-menu" @tap.stop>
+        <text class="record-menu-title">{{ menuRecord.foodName }}</text>
+        <view class="record-menu-item" @tap="menuDelete">
+          <text class="record-menu-icon">🗑️</text>
+          <text class="record-menu-label">删除记录</text>
+        </view>
+        <view class="record-menu-item" @tap="menuRatePanel">
+          <text class="record-menu-icon">⭐</text>
+          <text class="record-menu-label">快速评分</text>
+        </view>
+        <view class="record-menu-item" @tap="menuCopyToday">
+          <text class="record-menu-icon">📋</text>
+          <text class="record-menu-label">复制到今天</text>
+        </view>
+        <view class="record-menu-cancel" @tap="menuRecord = null">
+          <text>取消</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 快速评分弹窗 -->
+    <view v-if="showRatePanel" class="record-menu-mask" @tap="showRatePanel = false">
+      <view class="record-menu" @tap.stop>
+        <text class="record-menu-title">为「{{ menuRecord && menuRecord.foodName }}」评分</text>
+        <view class="quick-stars">
+          <text
+            v-for="s in 5"
+            :key="s"
+            class="quick-star"
+            :class="{ 'quick-star--active': s <= quickRating }"
+            @tap="quickRating = s"
+          >★</text>
+        </view>
+        <text class="quick-rating-text">{{ ratingText(quickRating) }}</text>
+        <view class="record-menu-item record-menu-confirm" @tap="submitQuickRate">
+          <text>确认评分</text>
+        </view>
+        <view class="record-menu-cancel" @tap="showRatePanel = false">
+          <text>取消</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -160,6 +209,17 @@ const year = ref(now.getFullYear())
 const month = ref(now.getMonth() + 1)
 const selectedDate = ref(today())
 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+
+// 滑动手势切换月份
+let touchStartX = 0
+function onTouchStart(e) {
+  touchStartX = e.touches[0].clientX
+}
+function onTouchEnd(e) {
+  const delta = e.changedTouches[0].clientX - touchStartX
+  if (delta < -50) nextMonth()
+  else if (delta > 50) prevMonth()
+}
 
 // 快速录入表单
 const showAddRecord = ref(false)
@@ -211,12 +271,6 @@ async function submitRecord() {
   addForm.value = { foodId: null, mealType: 'lunch', cost: '', nutrition: [] }
   uni.showToast({ title: '已记录 ✅', icon: 'none' })
 }
-
-const now = new Date()
-const year = ref(now.getFullYear())
-const month = ref(now.getMonth() + 1)
-const selectedDate = ref(today())
-const weekDays = ['日', '一', '二', '三', '四', '五', '六']
 
 const calendarDays = computed(() => {
   const days = getDaysInMonth(year.value, month.value)
@@ -306,6 +360,54 @@ function nextMonth() {
 }
 function goRecord() {
   openAddRecord()
+}
+
+// 长按快捷菜单
+const menuRecord = ref(null)
+const showRatePanel = ref(false)
+const quickRating = ref(0)
+
+function openRecordMenu(record) {
+  menuRecord.value = record
+  quickRating.value = record.rating || 0
+  showRatePanel.value = false
+}
+
+function menuDelete() {
+  const id = menuRecord.value?.id
+  menuRecord.value = null
+  if (id) deleteRecord(id)
+}
+
+function menuRatePanel() {
+  showRatePanel.value = true
+}
+
+async function submitQuickRate() {
+  if (!menuRecord.value || !quickRating.value) return
+  await rateRecord(menuRecord.value.id, quickRating.value)
+  showRatePanel.value = false
+  menuRecord.value = null
+}
+
+async function menuCopyToday() {
+  const rec = menuRecord.value
+  menuRecord.value = null
+  if (!rec) return
+  const todayStr = today()
+  if (rec.date === todayStr) {
+    uni.showToast({ title: '已经是今天的记录', icon: 'none' })
+    return
+  }
+  await recordStore.add({
+    foodId: rec.foodId,
+    foodName: rec.foodName,
+    date: todayStr,
+    mealType: rec.mealType,
+    cost: rec.cost || 0,
+    nutrition: rec.nutrition || [],
+  })
+  uni.showToast({ title: '已复制到今天 ✅', icon: 'none' })
 }
 
 onMounted(async () => {
@@ -575,5 +677,80 @@ onMounted(async () => {
     font-weight: 600;
   }
   &:active { opacity: 0.8; }
+}
+
+/* 长按菜单 */
+.record-menu-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 999;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.record-menu {
+  width: 100%;
+  background: $fd-card-bg;
+  border-radius: $fd-radius $fd-radius 0 0;
+  padding: $fd-space-base $fd-space-md;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.record-menu-title {
+  display: block;
+  text-align: center;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  padding: $fd-space-xs 0 $fd-space-base;
+  border-bottom: 2rpx solid $fd-border;
+  margin-bottom: $fd-space-xs;
+}
+.record-menu-item {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+  padding: $fd-space-base $fd-space-sm;
+  border-radius: $fd-radius-sm;
+  &:active { background: $fd-bg; }
+}
+.record-menu-icon { font-size: 40rpx; }
+.record-menu-label {
+  font-size: $fd-font-base;
+  color: $fd-text;
+}
+.record-menu-confirm {
+  justify-content: center;
+  background: $fd-primary;
+  color: #fff;
+  border-radius: $fd-radius-round;
+  margin-top: $fd-space-sm;
+  .record-menu-label { color: #fff; font-weight: 700; }
+}
+.record-menu-cancel {
+  text-align: center;
+  padding: $fd-space-base;
+  color: $fd-text-secondary;
+  font-size: $fd-font-base;
+  &:active { opacity: 0.7; }
+}
+.quick-stars {
+  display: flex;
+  justify-content: center;
+  gap: $fd-space-sm;
+  padding: $fd-space-base 0 $fd-space-xs;
+}
+.quick-star {
+  font-size: 64rpx;
+  color: $fd-border;
+  &--active { color: #FFB800; }
+  &:active { opacity: 0.7; }
+}
+.quick-rating-text {
+  display: block;
+  text-align: center;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  margin-bottom: $fd-space-sm;
+  min-height: 36rpx;
 }
 </style>
