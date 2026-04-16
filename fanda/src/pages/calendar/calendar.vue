@@ -40,11 +40,16 @@
 
     <!-- 选中日期的记录 -->
     <view class="records-section">
-      <text class="records-title">{{ selectedDate }} 用餐记录</text>
+      <view class="records-title-row">
+        <text class="records-title">{{ selectedDate }} 用餐记录</text>
+        <view class="add-record-btn" @tap="openAddRecord">
+          <text>+ 记录</text>
+        </view>
+      </view>
       <!-- 骨架屏：数据加载中 -->
       <fd-skeleton v-if="recordLoading" :rows="4" />
       <view v-else-if="dayRecords.length === 0" class="records-empty">
-        <fd-empty icon="📝" text="这天还没有记录哦" btn-text="去记录" @action="goRecord" />
+        <fd-empty icon="📝" text="这天还没有记录哦" btn-text="去记录" @action="openAddRecord" />
       </view>
       <view v-for="record in dayRecords" :key="record.id" class="record-card fd-card">
         <view class="record-header">
@@ -74,20 +79,138 @@
         </view>
       </view>
     </view>
+
+    <!-- 快速录入弹窗 -->
+    <fd-modal v-model:visible="showAddRecord" title="记录用餐" @confirm="submitRecord">
+      <!-- 选择食物（带搜索） -->
+      <view class="form-item">
+        <text class="form-label">食物</text>
+        <view class="food-select-btn" @tap="showFoodPicker = true">
+          <text :class="selectedFood ? 'food-select-name' : 'food-select-placeholder'">
+            {{ selectedFood ? selectedFood.name : '点击选择食物…' }}
+          </text>
+          <text class="food-select-arrow">›</text>
+        </view>
+      </view>
+      <!-- 餐次 -->
+      <view class="form-item">
+        <text class="form-label">餐次</text>
+        <view class="meal-types">
+          <view
+            v-for="mt in MEAL_TYPES"
+            :key="mt.key"
+            class="meal-type-btn"
+            :class="{ 'meal-type-btn--active': addForm.mealType === mt.key }"
+            @tap="addForm.mealType = mt.key"
+          >
+            <text>{{ mt.label }}</text>
+          </view>
+        </view>
+      </view>
+      <!-- 花费 -->
+      <view class="form-item">
+        <text class="form-label">花费（元）</text>
+        <input class="form-input" type="digit" v-model="addForm.cost" placeholder="0" />
+      </view>
+      <!-- 营养标签 -->
+      <view class="form-item">
+        <text class="form-label">营养标签（多选）</text>
+        <view class="nutrition-tags">
+          <view
+            v-for="n in NUTRITION_TYPES"
+            :key="n.key"
+            class="nutrition-tag"
+            :class="{ 'nutrition-tag--active': addForm.nutrition.includes(n.key) }"
+            @tap="toggleNutrition(n.key)"
+          >
+            <text>{{ n.label }}</text>
+          </view>
+        </view>
+      </view>
+    </fd-modal>
+
+    <!-- 食物选择器 -->
+    <fd-food-picker
+      v-model:visible="showFoodPicker"
+      v-model="addForm.foodId"
+      :meal-time="addForm.mealType"
+      @select="onFoodSelected"
+    />
   </view>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRecordStore } from '@/stores/modules/record'
+import { useFoodStore } from '@/stores/modules/food'
 import { today, mealTypeLabel, getDaysInMonth, getFirstDayOfWeek } from '@/utils/date'
-import { NUTRITION_TYPES } from '@/config/constants'
+import { NUTRITION_TYPES, MEAL_TYPES } from '@/config/constants'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
 import FdSkeleton from '@/components/common/fd-skeleton.vue'
+import FdModal from '@/components/common/fd-modal.vue'
+import FdFoodPicker from '@/components/common/fd-food-picker.vue'
 
 const recordStore = useRecordStore()
+const foodStore = useFoodStore()
 const recordLoading = ref(true)
+
+const now = new Date()
+const year = ref(now.getFullYear())
+const month = ref(now.getMonth() + 1)
+const selectedDate = ref(today())
+const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+
+// 快速录入表单
+const showAddRecord = ref(false)
+const showFoodPicker = ref(false)
+const selectedFood = ref(null)
+const addForm = ref({ foodId: null, mealType: 'lunch', cost: '', nutrition: [] })
+
+function openAddRecord() {
+  // 根据时间自动选择餐次
+  const h = new Date().getHours()
+  addForm.value.mealType = h < 10 ? 'breakfast' : h < 15 ? 'lunch' : 'dinner'
+  showAddRecord.value = true
+}
+
+function onFoodSelected(food) {
+  selectedFood.value = food
+  addForm.value.foodId = food.id
+  // 自动填充该食物的营养标签
+  if (food.nutrition?.length) {
+    addForm.value.nutrition = [...food.nutrition]
+  }
+  // 自动填充价格中值
+  if (!addForm.value.cost && food.priceRange) {
+    addForm.value.cost = String(Math.round((food.priceRange[0] + food.priceRange[1]) / 2))
+  }
+}
+
+function toggleNutrition(key) {
+  const idx = addForm.value.nutrition.indexOf(key)
+  if (idx >= 0) addForm.value.nutrition.splice(idx, 1)
+  else addForm.value.nutrition.push(key)
+}
+
+async function submitRecord() {
+  if (!selectedFood.value) {
+    uni.showToast({ title: '请选择食物', icon: 'none' })
+    return
+  }
+  await recordStore.add({
+    foodId: selectedFood.value.id,
+    foodName: selectedFood.value.name,
+    date: selectedDate.value,
+    mealType: addForm.value.mealType,
+    cost: Number(addForm.value.cost) || 0,
+    nutrition: addForm.value.nutrition,
+  })
+  // 重置表单
+  selectedFood.value = null
+  addForm.value = { foodId: null, mealType: 'lunch', cost: '', nutrition: [] }
+  uni.showToast({ title: '已记录 ✅', icon: 'none' })
+}
 
 const now = new Date()
 const year = ref(now.getFullYear())
@@ -182,11 +305,11 @@ function nextMonth() {
   else month.value++
 }
 function goRecord() {
-  uni.switchTab({ url: '/pages/index/index' })
+  openAddRecord()
 }
 
 onMounted(async () => {
-  await recordStore.load()
+  await Promise.all([recordStore.load(), foodStore.load()])
   recordLoading.value = false
 })
 </script>
@@ -287,15 +410,25 @@ onMounted(async () => {
   &--3 { background: $fd-primary; width: 16rpx; height: 16rpx; }
 }
 
-.records-section {
-  padding: $fd-space-base $fd-space-md;
+.records-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $fd-space-sm;
 }
 .records-title {
   font-size: $fd-font-md;
   font-weight: 700;
   color: $fd-text;
-  margin-bottom: $fd-space-sm;
-  display: block;
+}
+.add-record-btn {
+  background: $fd-primary;
+  color: #fff;
+  font-size: $fd-font-xs;
+  font-weight: 600;
+  padding: 8rpx 24rpx;
+  border-radius: $fd-radius-round;
+  &:active { opacity: 0.85; }
 }
 
 .record-card {
@@ -361,5 +494,86 @@ onMounted(async () => {
 .rating-text {
   font-size: $fd-font-xs;
   color: $fd-text-secondary;
+}
+
+/* 快速录入表单 */
+.food-select-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 0 $fd-space-sm;
+  height: 72rpx;
+  background: $fd-bg;
+  &:active { border-color: $fd-primary; }
+}
+.food-select-name {
+  font-size: $fd-font-base;
+  color: $fd-text;
+  font-weight: 500;
+}
+.food-select-placeholder {
+  font-size: $fd-font-base;
+  color: $fd-text-light;
+}
+.food-select-arrow {
+  font-size: $fd-font-lg;
+  color: $fd-text-light;
+}
+.form-item {
+  margin-bottom: $fd-space-base;
+}
+.form-label {
+  display: block;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  margin-bottom: 8rpx;
+}
+.form-input {
+  width: 100%;
+  height: 72rpx;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 0 $fd-space-sm;
+  font-size: $fd-font-base;
+}
+.meal-types {
+  display: flex;
+  gap: $fd-space-xs;
+}
+.meal-type-btn {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  border-radius: $fd-radius-round;
+  border: 2rpx solid $fd-border;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  &--active {
+    background: $fd-primary;
+    color: #fff;
+    border-color: $fd-primary;
+  }
+  &:active { opacity: 0.8; }
+}
+.nutrition-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $fd-space-xs;
+}
+.nutrition-tag {
+  padding: 8rpx 24rpx;
+  border-radius: $fd-radius-round;
+  border: 2rpx solid $fd-border;
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+  &--active {
+    background: rgba($fd-accent, 0.15);
+    border-color: $fd-accent;
+    color: $fd-accent;
+    font-weight: 600;
+  }
+  &:active { opacity: 0.8; }
 }
 </style>

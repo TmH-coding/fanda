@@ -131,15 +131,36 @@
 
     <!-- 收藏夹 -->
     <view class="section fd-card">
-      <text class="section-title">❤️ 我的收藏</text>
+      <view class="section-header">
+        <text class="section-title">❤️ 我的收藏</text>
+        <view v-if="favoriteItems.length > 0" class="batch-toggle" @tap="toggleFavBatch">
+          <text>{{ favBatchMode ? '完成' : '批量' }}</text>
+        </view>
+      </view>
       <view v-if="favoriteItems.length === 0">
         <fd-empty icon="❤️" text="还没有收藏哦" />
       </view>
-      <view v-for="food in favoriteItems" :key="food.id" class="fav-item">
-        <text class="fav-name">{{ food.name }}</text>
-        <text class="fav-price">¥{{ food.priceRange[0] }}-{{ food.priceRange[1] }}</text>
-        <view class="fav-remove" @tap="prefStore.toggleFavorite(food.id)">
-          <text>取消</text>
+      <view v-else>
+        <view v-if="favBatchMode" class="batch-bar">
+          <text class="batch-hint">已选 {{ favSelected.size }} / {{ favoriteItems.length }}</text>
+          <view class="batch-btns">
+            <view class="batch-btn batch-btn--select-all" @tap="selectAllFav">
+              <text>全选</text>
+            </view>
+            <view class="batch-btn batch-btn--remove" @tap="batchRemoveFav" :class="{ 'batch-btn--disabled': favSelected.size === 0 }">
+              <text>删除 {{ favSelected.size > 0 ? `(${favSelected.size})` : '' }}</text>
+            </view>
+          </view>
+        </view>
+        <view v-for="food in favoriteItems" :key="food.id" class="fav-item" @tap="favBatchMode && toggleFavSelect(food.id)">
+          <view v-if="favBatchMode" class="batch-check" :class="{ 'batch-check--on': favSelected.has(food.id) }">
+            <text>{{ favSelected.has(food.id) ? '✓' : '' }}</text>
+          </view>
+          <text class="fav-name">{{ food.name }}</text>
+          <text class="fav-price">¥{{ food.priceRange[0] }}-{{ food.priceRange[1] }}</text>
+          <view v-if="!favBatchMode" class="fav-remove" @tap="prefStore.toggleFavorite(food.id)">
+            <text>取消</text>
+          </view>
         </view>
       </view>
     </view>
@@ -148,16 +169,35 @@
     <view class="section fd-card">
       <view class="section-header">
         <text class="section-title">🚫 不想吃列表</text>
-        <text class="section-sub">永久从推荐中排除</text>
+        <view v-if="blacklistItems.length > 0" class="batch-toggle" @tap="toggleBlBatch">
+          <text>{{ blBatchMode ? '完成' : '批量' }}</text>
+        </view>
       </view>
+      <text class="section-sub" style="display:block;margin-bottom:12rpx;">永久从推荐中排除</text>
       <view v-if="blacklistItems.length === 0">
         <fd-empty icon="🚫" text="黑名单为空，推荐不受限制" />
       </view>
-      <view v-for="food in blacklistItems" :key="food.id" class="fav-item">
-        <text class="fav-name blacklist-name">{{ food.name }}</text>
-        <text class="fav-price">{{ food.category }}</text>
-        <view class="fav-remove fav-restore" @tap="prefStore.toggleBlacklist(food.id)">
-          <text>移除</text>
+      <view v-else>
+        <view v-if="blBatchMode" class="batch-bar">
+          <text class="batch-hint">已选 {{ blSelected.size }} / {{ blacklistItems.length }}</text>
+          <view class="batch-btns">
+            <view class="batch-btn batch-btn--select-all" @tap="selectAllBl">
+              <text>全选</text>
+            </view>
+            <view class="batch-btn batch-btn--remove" @tap="batchRemoveBl" :class="{ 'batch-btn--disabled': blSelected.size === 0 }">
+              <text>移出 {{ blSelected.size > 0 ? `(${blSelected.size})` : '' }}</text>
+            </view>
+          </view>
+        </view>
+        <view v-for="food in blacklistItems" :key="food.id" class="fav-item" @tap="blBatchMode && toggleBlSelect(food.id)">
+          <view v-if="blBatchMode" class="batch-check" :class="{ 'batch-check--on': blSelected.has(food.id) }">
+            <text>{{ blSelected.has(food.id) ? '✓' : '' }}</text>
+          </view>
+          <text class="fav-name blacklist-name">{{ food.name }}</text>
+          <text class="fav-price">{{ food.category }}</text>
+          <view v-if="!blBatchMode" class="fav-remove fav-restore" @tap="prefStore.toggleBlacklist(food.id)">
+            <text>移除</text>
+          </view>
         </view>
       </view>
     </view>
@@ -377,6 +417,86 @@ const blacklistItems = computed(() => {
   const ids = prefStore.blacklistIds
   return foodStore.foods.filter((f) => ids.includes(f.id))
 })
+
+// 收藏批量操作
+const favBatchMode = ref(false)
+const favSelected = ref(new Set())
+
+function toggleFavBatch() {
+  favBatchMode.value = !favBatchMode.value
+  favSelected.value = new Set()
+}
+function toggleFavSelect(id) {
+  const s = new Set(favSelected.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  favSelected.value = s
+}
+function selectAllFav() {
+  if (favSelected.value.size === favoriteItems.value.length) {
+    favSelected.value = new Set()
+  } else {
+    favSelected.value = new Set(favoriteItems.value.map((f) => f.id))
+  }
+}
+function batchRemoveFav() {
+  if (favSelected.value.size === 0) return
+  const count = favSelected.value.size
+  uni.showModal({
+    title: '批量取消收藏',
+    content: `确认取消 ${count} 个收藏？`,
+    success: (res) => {
+      if (res.confirm) {
+        for (const id of favSelected.value) {
+          prefStore.toggleFavorite(id)
+        }
+        favSelected.value = new Set()
+        favBatchMode.value = false
+        uni.showToast({ title: `已取消 ${count} 个收藏`, icon: 'success' })
+      }
+    },
+  })
+}
+
+// 黑名单批量操作
+const blBatchMode = ref(false)
+const blSelected = ref(new Set())
+
+function toggleBlBatch() {
+  blBatchMode.value = !blBatchMode.value
+  blSelected.value = new Set()
+}
+function toggleBlSelect(id) {
+  const s = new Set(blSelected.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  blSelected.value = s
+}
+function selectAllBl() {
+  if (blSelected.value.size === blacklistItems.value.length) {
+    blSelected.value = new Set()
+  } else {
+    blSelected.value = new Set(blacklistItems.value.map((f) => f.id))
+  }
+}
+function batchRemoveBl() {
+  if (blSelected.value.size === 0) return
+  const count = blSelected.value.size
+  uni.showModal({
+    title: '批量移出黑名单',
+    content: `确认将 ${count} 个菜品移出黑名单？`,
+    success: (res) => {
+      if (res.confirm) {
+        for (const id of blSelected.value) {
+          prefStore.toggleBlacklist(id)
+        }
+        blSelected.value = new Set()
+        blBatchMode.value = false
+        uni.showToast({ title: `已移出 ${count} 个`, icon: 'success' })
+      }
+    },
+  })
+}
 
 // 我的自定义食物
 const myFoods = ref([])
@@ -665,6 +785,67 @@ onMounted(async () => {
 }
 .fav-restore { color: $fd-accent; }
 .blacklist-name { text-decoration: line-through; color: $fd-text-secondary; }
+
+/* 批量操作 */
+.batch-toggle {
+  font-size: $fd-font-sm;
+  color: $fd-primary;
+  font-weight: 600;
+  padding: 4rpx 16rpx;
+  &:active { opacity: 0.7; }
+}
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $fd-space-sm 0;
+  margin-bottom: $fd-space-xs;
+  border-bottom: 2rpx solid $fd-border;
+}
+.batch-hint {
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+}
+.batch-btns {
+  display: flex;
+  gap: $fd-space-xs;
+}
+.batch-btn {
+  font-size: $fd-font-xs;
+  padding: 6rpx 20rpx;
+  border-radius: $fd-radius-round;
+  &:active { opacity: 0.8; }
+  &--select-all {
+    border: 2rpx solid $fd-border;
+    color: $fd-text-secondary;
+  }
+  &--remove {
+    background: $fd-danger;
+    color: #fff;
+    font-weight: 600;
+  }
+  &--disabled {
+    background: $fd-border;
+    color: $fd-text-light;
+  }
+}
+.batch-check {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  border: 2rpx solid $fd-border;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: $fd-space-sm;
+  flex-shrink: 0;
+  font-size: $fd-font-sm;
+  color: #fff;
+  &--on {
+    background: $fd-primary;
+    border-color: $fd-primary;
+  }
+}
 
 .logout-btn {
   text-align: center;

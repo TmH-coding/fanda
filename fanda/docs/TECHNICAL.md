@@ -58,17 +58,25 @@ src/
 │   ├── calendar/calendar.vue    # 饮食日历
 │   ├── budget/budget.vue        # 预算管家
 │   ├── social/social.vue        # 拼饭广场
+│   ├── social-detail/social-detail.vue  # 拼饭详情（投票/AA账单/WebSocket/评价）
 │   ├── profile/profile.vue      # 个人中心
 │   ├── stats/stats.vue          # 数据统计报告
 │   ├── ai/ai.vue                # AI 饮食顾问（SSE 流式）
 │   ├── friends/friends.vue      # 好友管理（动态/列表/请求/搜索）
 │   └── food-create/food-create.vue  # 录入自定义食物
 ├── components/
-│   └── common/
-│       ├── fd-nav-bar.vue       # 顶部导航栏（支持左/右插槽）
-│       ├── fd-empty.vue         # 空状态占位
-│       ├── fd-error-state.vue   # 错误状态 + 重试按钮
-│       └── fd-heatmap.vue       # 打卡热力图（GitHub 风格）
+│   ├── common/
+│   │   ├── fd-nav-bar.vue       # 顶部导航栏（支持左/右插槽）
+│   │   ├── fd-empty.vue         # 空状态占位
+│   │   ├── fd-error-state.vue   # 错误状态 + 重试按钮
+│   │   ├── fd-heatmap.vue       # 打卡热力图（GitHub 风格）
+│   │   ├── fd-modal.vue         # 通用弹窗
+│   │   ├── fd-skeleton.vue      # 骨架屏
+│   │   └── fd-food-picker.vue   # 食物选择器（搜索 + 分类筛选）
+│   └── recommend/
+│       ├── fd-wheel.vue         # 转盘组件（4s 动画 + 震动反馈）
+│       ├── fd-food-result.vue   # 推荐结果卡片（含菜品详情弹窗）
+│       └── fd-exclude-tags.vue  # 排除标签选择器
 ├── stores/modules/
 │   ├── auth.js                  # 登录状态、token
 │   ├── food.js                  # 菜品数据
@@ -86,7 +94,8 @@ src/
 │   ├── http.js                  # uni.request 封装（get/post/put/del）
 │   ├── storage.js               # uni.storage 封装
 │   ├── offlineQueue.js          # 离线操作队列（enqueue/flush/peek）
-│   └── date.js                  # 日期工具、mealTypeLabel()
+│   ├── date.js                  # 日期工具、mealTypeLabel()
+│   └── websocket.js             # createSocialSocket WebSocket 封装
 ├── config/
 │   ├── index.js                 # dataMode 配置
 │   ├── theme.js                 # spicyLevels 等常量
@@ -352,16 +361,20 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 根据时段（早/中/晚/宵夜）过滤菜品
 - 应用用户偏好（辣度/忌口/黑名单/排除法）
 - **今日去重** — 优先排除当日已记录的菜品；若去除后候选数 < 3，则回退到完整候选池
-- **预算感知价格过滤** — 超支时仅显示均价 ≤ 预算日均 × 0.8 的菜品；未超支时阈值为 1.5 倍；推荐理由文案自动切换为节省提示
+- **预算感知价格过滤** — 超支时仅显示均价 ≤ 预算日均 × 0.8 的菜品；未超支时阈值为 1.5 倍
+- **菜品详情弹窗** — 推荐结果卡片中菜品名旁显示 ℹ️，点击弹出底部抽屉，展示分类/价格区间/适合餐次/营养标签/过敏原/特色标签；弹窗内支持直接收藏或确认选择
 - "就吃这个"直接记录到当日对应餐次
 
 ### 7.3 饮食日历
 
 - `pages/calendar/calendar.vue`
 - 月历视图，有记录的日期标圆点
-- 支持按日查看三餐列表
-- 快速录入（选菜品 + 金额 + 营养标签）
-- **营养均衡提醒** — 检查近 3 天记录，若无任何含蔬菜/水果营养标签的记录，在日历顶部显示黄绿色提示横幅
+- **快速录入** — 日历页顶部"+ 记录"按钮，弹出录入表单：
+  - 食物选择栏点击打开 `fd-food-picker` 选择器（带搜索 + 分类筛选）
+  - 选菜后自动填充营养标签和价格中值
+  - 支持餐次切换、花费输入、多选营养标签
+- 支持按日查看三餐列表（含评分）
+- **营养均衡提醒** — 检查近 3 天记录，若无任何蔬菜/水果营养标签，在日历顶部显示提示横幅
 
 ### 7.4 预算管家
 
@@ -387,8 +400,8 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - **打卡热力图** — 过去 12 周记录分布
 - **口味偏好** — 辣度、忌口标签
 - **成就徽章** — 分类 Tab + 进度条 + 密成就
-- **收藏夹** — 展示/取消收藏
-- **不想吃列表** — 展示/移出黑名单
+- **收藏夹** — 展示/取消收藏；支持**批量操作**（批量模式下逐项勾选/全选，一键批量取消收藏）
+- **不想吃列表** — 展示/移出黑名单；同样支持**批量操作**（批量移出）
 - **我录入的食物** — 展示用户自建菜品 + 删除（远程模式）
 - **离线同步徽章** — 有队列时显示待同步数，点击手动同步
 - 导航入口：AI 顾问 / 我的好友 / 数据报告 / 录入食物
