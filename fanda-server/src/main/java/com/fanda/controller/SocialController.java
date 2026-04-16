@@ -35,6 +35,7 @@ public class SocialController {
     private final SocialTagMapper socialTagMapper;
     private final UserMapper userMapper;
     private final SocialRoomManager roomManager;
+    private final GroupReviewMapper groupReviewMapper;
 
     @GetMapping
     public ApiResponse<List<SocialGroup>> list(
@@ -224,6 +225,57 @@ public class SocialController {
         bill.put("status", group.getStatus());
 
         return ApiResponse.ok(bill);
+    }
+
+    // ── 获取活动评价 ─────────────────────────────────────────────────
+    @GetMapping("/{id}/reviews")
+    public ApiResponse<List<GroupReview>> getReviews(@PathVariable Long id) {
+        List<GroupReview> reviews = groupReviewMapper.selectList(
+                new LambdaQueryWrapper<GroupReview>()
+                        .eq(GroupReview::getGroupId, id)
+                        .orderByDesc(GroupReview::getCreatedAt));
+        return ApiResponse.ok(reviews);
+    }
+
+    // ── 提交活动评价 ─────────────────────────────────────────────────
+    @PostMapping("/{id}/reviews")
+    public ApiResponse<GroupReview> addReview(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+
+        Long userId = getCurrentUserId(authentication);
+        SocialGroup group = socialGroupMapper.selectById(id);
+        if (group == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+
+        // 只有成员才能评价
+        long isMember = socialMemberMapper.selectCount(new LambdaQueryWrapper<SocialMember>()
+                .eq(SocialMember::getGroupId, id).eq(SocialMember::getUserId, userId));
+        if (isMember == 0) throw new BusinessException(ErrorCode.FORBIDDEN);
+
+        // 每人只能评价一次
+        long hasReviewed = groupReviewMapper.selectCount(new LambdaQueryWrapper<GroupReview>()
+                .eq(GroupReview::getGroupId, id).eq(GroupReview::getUserId, userId));
+        if (hasReviewed > 0) throw new BusinessException(ErrorCode.ALREADY_REVIEWED);
+
+        int rating = body.containsKey("rating") ? ((Number) body.get("rating")).intValue() : 5;
+        String content = body.containsKey("content") ? body.get("content").toString() : "";
+        rating = Math.max(1, Math.min(5, rating));
+
+        User user = userMapper.selectById(userId);
+        String displayName = user != null
+                ? (user.getNickname() != null ? user.getNickname() : user.getUsername())
+                : "匿名";
+
+        GroupReview review = new GroupReview();
+        review.setGroupId(id);
+        review.setUserId(userId);
+        review.setRating(rating);
+        review.setContent(content);
+        review.setUsername(displayName);
+        groupReviewMapper.insert(review);
+
+        return ApiResponse.ok(review);
     }
 
     private void loadChildren(SocialGroup group) {

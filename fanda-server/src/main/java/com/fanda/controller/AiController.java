@@ -221,14 +221,25 @@ public class AiController {
     // ─────────────────────────────────────────────────────────────
     // 7. 图片识别菜品 — qwen-vl 视觉模型
     // ─────────────────────────────────────────────────────────────
+    /** base64 原始数据上限：约 3MB 图片对应 ~4MB base64 */
+    private static final int MAX_BASE64_BYTES = 4 * 1024 * 1024;
+
     @PostMapping("/recognize-food")
     public ApiResponse<String> recognizeFood(
             @RequestBody Map<String, String> body,
             Authentication authentication) {
 
-        String imageBase64 = body.getOrDefault("imageBase64", "");
+        String imageBase64 = body.getOrDefault("imageBase64", "").trim();
         if (imageBase64.isBlank()) {
-            return ApiResponse.ok("请提供图片数据");
+            return ApiResponse.error(40000, "请提供图片数据");
+        }
+        // 大小校验：防止超大 payload 打穿后端
+        if (imageBase64.length() > MAX_BASE64_BYTES) {
+            return ApiResponse.error(40000, "图片过大，请压缩后重试（限 3MB 以内）");
+        }
+        // 格式校验：base64 只允许合法字符
+        if (!imageBase64.matches("^[A-Za-z0-9+/=]+$")) {
+            return ApiResponse.error(40000, "图片数据格式不合法");
         }
         String result = foodImageRecognizer.recognize(imageBase64);
         return ApiResponse.ok(result);

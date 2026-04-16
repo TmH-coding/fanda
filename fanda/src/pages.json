@@ -62,6 +62,13 @@
         "navigationBarTitleText": "AI 饮食顾问",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/friends/friends",
+      "style": {
+        "navigationBarTitleText": "我的好友",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

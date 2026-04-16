@@ -9,6 +9,8 @@ import com.fanda.exception.ErrorCode;
 import com.fanda.mapper.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +33,7 @@ public class PreferenceController {
     private final UserMapper userMapper;
 
     @GetMapping
+    @Cacheable(value = "userPrefs", key = "#authentication.name")
     public ApiResponse<Map<String, Object>> get(Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
 
@@ -65,6 +68,7 @@ public class PreferenceController {
 
     @PutMapping
     @Transactional
+    @CacheEvict(value = "userPrefs", key = "#authentication.name")
     public ApiResponse<Void> update(
             @RequestBody @Valid PreferenceUpdateRequest request,
             Authentication authentication) {

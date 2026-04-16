@@ -128,6 +128,52 @@
         </view>
       </view>
 
+      <!-- 活动评价 -->
+      <view class="section fd-card" v-if="group.status === 'full' || group.status === 'closed'">
+        <text class="section-title">⭐ 活动评价</text>
+
+        <!-- 已有评价列表 -->
+        <view v-if="reviews.length" class="review-list">
+          <view v-for="r in reviews" :key="r.id" class="review-item">
+            <view class="review-header">
+              <text class="review-author">{{ r.username }}</text>
+              <view class="review-stars">
+                <text v-for="s in 5" :key="s" class="star" :class="{ 'star--on': s <= r.rating }">★</text>
+              </view>
+            </view>
+            <text v-if="r.content" class="review-content">{{ r.content }}</text>
+          </view>
+        </view>
+        <text v-else class="fd-text-secondary" style="display:block;margin-bottom:24rpx;">暂无评价</text>
+
+        <!-- 提交评价（仅成员且未评价） -->
+        <view v-if="isMember && !myReview" class="review-form">
+          <view class="review-divider" />
+          <text class="review-form-label">发表你的评价</text>
+          <view class="star-picker">
+            <text
+              v-for="s in 5"
+              :key="s"
+              class="star star-pick"
+              :class="{ 'star--on': s <= reviewRating }"
+              @tap="reviewRating = s"
+            >★</text>
+          </view>
+          <input
+            class="review-input"
+            v-model="reviewContent"
+            placeholder="说说你的感受... (选填)"
+            maxlength="200"
+          />
+          <view class="fd-btn" :class="{ 'fd-btn--loading': submittingReview }" @tap="submitReview">
+            <text>{{ submittingReview ? '提交中...' : '提交评价' }}</text>
+          </view>
+        </view>
+        <view v-else-if="myReview" class="my-review-tip">
+          <text>✅ 已评价</text>
+        </view>
+      </view>
+
       <!-- 实时消息 -->
       <view class="section fd-card">
         <view class="chat-header">
@@ -187,6 +233,11 @@ const messages = ref([])
 const chatInput = ref('')
 const chatScrollTop = ref(0)
 const wsConnected = ref(false)
+const reviews = ref([])
+const reviewRating = ref(5)
+const reviewContent = ref('')
+const submittingReview = ref(false)
+const myReview = ref(false)
 
 let socket = null
 let currentUserId = null
@@ -230,6 +281,7 @@ async function loadGroup() {
     group.value = data
     if (data.status === 'full' || data.status === 'closed') {
       loadBill()
+      loadReviews()
     }
   } catch (e) {
     uni.showToast({ title: '加载失败', icon: 'none' })
@@ -308,17 +360,44 @@ function formatTime(ts) {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
+async function loadReviews() {
+  try {
+    const data = await get(`/api/social/groups/${groupId.value}/reviews`)
+    reviews.value = data
+    myReview.value = data.some(r => r.userId === currentUserId)
+  } catch (e) {
+    console.warn('[Review] 加载评价失败', e)
+  }
+}
+
+async function submitReview() {
+  if (submittingReview.value) return
+  submittingReview.value = true
+  try {
+    const r = await post(`/api/social/groups/${groupId.value}/reviews`, {
+      rating: reviewRating.value,
+      content: reviewContent.value.trim(),
+    })
+    reviews.value.unshift(r)
+    myReview.value = true
+    reviewContent.value = ''
+    uni.showToast({ title: '评价成功 ⭐', icon: 'success' })
+  } catch (e) {
+    uni.showToast({ title: e.message || '提交失败', icon: 'none' })
+  } finally {
+    submittingReview.value = false
+  }
+}
+
 function connectWs() {
   socket = createSocialSocket(groupId.value, {
     onOpen: () => { wsConnected.value = true },
     onClose: () => { wsConnected.value = false },
     onError: () => { wsConnected.value = false },
-    onMessage: (msg) => {
-      // 投票事件：同步最新候选数据
+    onMessage: async (msg) => {
       if (msg.type === 'VOTE' && msg.data && group.value) {
         group.value.candidates = msg.data
       }
-      // 加入事件：人数+1，满员时加载账单
       if (msg.type === 'JOIN' && group.value) {
         await loadGroup()
       }
@@ -471,6 +550,35 @@ onUnmounted(() => {
   font-weight: 600;
   &:active { opacity: 0.85; }
 }
+
+/* 评价 */
+.review-list { display: flex; flex-direction: column; gap: 20rpx; margin-bottom: 24rpx; }
+.review-item {
+  background: $fd-bg;
+  border-radius: $fd-radius-sm;
+  padding: 20rpx;
+}
+.review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8rpx; }
+.review-author { font-size: $fd-font-sm; font-weight: 600; color: $fd-text; }
+.review-stars { display: flex; gap: 4rpx; }
+.star { font-size: $fd-font-base; color: $fd-border; &--on { color: #FFD700; } }
+.review-content { display: block; font-size: $fd-font-sm; color: $fd-text-secondary; line-height: 1.6; }
+.review-divider { height: 2rpx; background: $fd-border; margin: 16rpx 0; }
+.review-form-label { display: block; font-size: $fd-font-sm; color: $fd-text-secondary; margin-bottom: 16rpx; }
+.star-picker { display: flex; gap: 12rpx; margin-bottom: 20rpx; }
+.star-pick { font-size: 48rpx; cursor: pointer; transition: transform 0.1s; &:active { transform: scale(1.2); } }
+.review-input {
+  width: 100%;
+  min-height: 80rpx;
+  background: $fd-bg;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 16rpx;
+  font-size: $fd-font-sm;
+  color: $fd-text;
+  margin-bottom: 20rpx;
+}
+.my-review-tip { text-align: center; padding: 16rpx; font-size: $fd-font-sm; color: $fd-success; }
 
 /* 聊天 */
 .chat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }

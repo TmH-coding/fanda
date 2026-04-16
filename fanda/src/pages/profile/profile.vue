@@ -104,6 +104,10 @@
         <text class="menu-item-label">🤖 AI 饮食顾问</text>
         <text class="menu-item-arrow">›</text>
       </view>
+      <view class="menu-item" @tap="goFriends">
+        <text class="menu-item-label">🤝 我的好友</text>
+        <text class="menu-item-arrow">›</text>
+      </view>
       <view class="menu-item" @tap="goStats">
         <text class="menu-item-label">📊 我的报告</text>
         <text class="menu-item-arrow">›</text>
@@ -169,6 +173,10 @@ function goStats() {
 
 function goAi() {
   uni.navigateTo({ url: '/pages/ai/ai' })
+}
+
+function goFriends() {
+  uni.navigateTo({ url: '/pages/friends/friends' })
 }
 
 function onLogout() {

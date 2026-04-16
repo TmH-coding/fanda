@@ -25,6 +25,33 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        // 确保 fd_group_review 表存在
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS fd_group_review (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    group_id BIGINT NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    rating TINYINT NOT NULL DEFAULT 5,
+                    content VARCHAR(500),
+                    username VARCHAR(100),
+                    created_at DATETIME,
+                    UNIQUE KEY uk_group_user_review (group_id, user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+
+        // 确保 fd_friendship 表存在
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS fd_friendship (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    requester_id BIGINT NOT NULL,
+                    addressee_id BIGINT NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    UNIQUE KEY uk_friendship (requester_id, addressee_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+
         // 确保 fd_weekly_report 表存在
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS fd_weekly_report (

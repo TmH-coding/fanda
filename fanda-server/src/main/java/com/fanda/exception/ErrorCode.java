@@ -15,6 +15,8 @@ public enum ErrorCode {
     GROUP_FULL(40003, "拼饭人数已满"),
     ALREADY_JOINED(40004, "已经加入该拼饭"),
     ALREADY_VOTED(40005, "已经投过票"),
+    FRIEND_REQUEST_EXISTS(40006, "好友关系已存在"),
+    ALREADY_REVIEWED(40007, "已经评价过了"),
     SERVER_ERROR(50000, "服务器内部错误");
 
     private final int code;

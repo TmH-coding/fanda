@@ -10,6 +10,8 @@ import com.fanda.exception.ErrorCode;
 import com.fanda.mapper.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,6 +34,7 @@ public class FoodController {
     private final UserMapper userMapper;
 
     @GetMapping
+    @Cacheable(value = "foods", key = "'system'", condition = "#keyword == null && #category == null && #authentication == null")
     public ApiResponse<List<FoodItemResponse>> list(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String keyword,

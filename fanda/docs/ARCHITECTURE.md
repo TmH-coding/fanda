@@ -55,7 +55,8 @@ fanda/src/
 │   ├── calendar/calendar.vue       # 饮食日历（记录查看/删除）
 │   ├── budget/budget.vue           # 预算管家（支出删除）
 │   ├── social/social.vue           # 拼饭广场
-│   ├── social-detail/              # 拼饭详情（投票、AA账单）
+│   ├── social-detail/              # 拼饭详情（投票、AA账单、实时聊天、活动评价）
+│   ├── friends/friends.vue         # 好友中心（搜索/申请/好友列表）
 │   ├── profile/profile.vue         # 个人中心
 │   ├── ai/ai.vue                   # AI 饮食顾问（多功能）
 │   ├── stats/stats.vue             # 饮食统计报告
@@ -80,6 +81,7 @@ fanda/src/
 │
 ├── utils/
 │   ├── http.js                     # Axios 封装（JWT 拦截器）
+│   ├── websocket.js                # WebSocket 工具（指数退避断线重连）
 │   └── storage.js / date.js / format.js
 │
 └── config/index.js                 # dataMode: 'local' | 'remote'
@@ -91,15 +93,16 @@ fanda/src/
 com/fanda/
 ├── controller/
 │   ├── AuthController.java         # /api/auth/** 登录注册
-│   ├── FoodController.java         # /api/foods
+│   ├── FoodController.java         # /api/foods（Redis 缓存 1h）
 │   ├── RecordController.java       # /api/records
 │   ├── BudgetController.java       # /api/budget
 │   ├── ExpenseController.java      # /api/expenses
-│   ├── PreferenceController.java   # /api/preferences
-│   ├── SocialController.java       # /api/social/** （含AA账单）
+│   ├── PreferenceController.java   # /api/preferences（Redis 缓存 30min）
+│   ├── SocialController.java       # /api/social/**（拼饭、投票、AA账单、活动评价）
+│   ├── FriendController.java       # /api/friends/**（好友关系、搜索防枚举）
 │   ├── StatsController.java        # /api/stats
 │   ├── AchievementController.java  # /api/achievements
-│   └── AiController.java           # /api/ai/** (7个AI端点)
+│   └── AiController.java           # /api/ai/** (7个AI端点，限流保护)
 │
 ├── ai/
 │   ├── FandaAiTools.java           # @Tool 工具集（Function Calling）
@@ -109,6 +112,9 @@ com/fanda/
 ├── config/
 │   ├── AiConfig.java               # ChatClient Bean (DashScope)
 │   ├── SecurityConfig.java         # Spring Security + JWT
+│   ├── CacheConfig.java            # Redis 缓存配置（@EnableCaching，分区 TTL）
+│   ├── RateLimitInterceptor.java   # AI 接口限流（滑动窗口令牌桶）
+│   ├── WebMvcConfig.java           # 注册拦截器
 │   ├── CorsConfig.java
 │   └── WebSocketConfig.java
 │
@@ -116,6 +122,8 @@ com/fanda/
 │   ├── User / FoodItem / MealRecord / Budget / Expense
 │   ├── UserPreference / UserAllergy / UserDislike
 │   ├── SocialGroup / SocialMember / SocialVote
+│   ├── Friendship                  # 好友关系（pending/accepted）
+│   ├── GroupReview                 # 拼饭活动评价（1-5星）
 │   └── WeeklyReport                # 每周营养周报存储
 │
 ├── security/
@@ -258,7 +266,19 @@ Store（更新状态 + 调用 service 持久化）
 | POST | /api/social/groups/{id}/join | 加入 |
 | POST | /api/social/groups/{id}/vote | 投票 |
 | GET | /api/social/groups/{id}/bill | AA账单估算 |
-| WS | /ws/social/{groupId} | 实时推送 |
+| GET/POST | /api/social/groups/{id}/reviews | 活动评价（查询/提交） |
+| WS | /ws/social/{groupId} | 实时推送（含群聊） |
+
+### 好友关系
+| Method | Path | 说明 |
+|--------|------|------|
+| GET | /api/friends | 好友列表 |
+| GET | /api/friends/requests | 收到的好友申请 |
+| GET | /api/friends/search?keyword= | 搜索用户（防枚举，每分钟20次） |
+| POST | /api/friends/request | 发送好友请求 |
+| POST | /api/friends/accept/{id} | 接受申请 |
+| POST | /api/friends/reject/{id} | 拒绝申请 |
+| DELETE | /api/friends/{id} | 删除好友 |
 
 ### AI 智能体
 | Method | Path | 说明 |
@@ -294,11 +314,13 @@ Store（更新状态 + 调用 service 持久化）
 | 框架 | Spring Boot 3.2.5 |
 | ORM | MyBatis-Plus 3.5.7 |
 | 数据库 | MySQL 8 |
+| 缓存 | Redis（Spring Cache，菜品1h/偏好30min/拼饭2min）|
 | 认证 | Spring Security + JJWT 0.12.5 |
-| 实时通信 | Spring WebSocket |
+| 实时通信 | Spring WebSocket（指数退避断线重连）|
 | AI | Spring AI Alibaba 1.0.0.2（通义千问 qwen-plus）|
 | 视觉模型 | DashScope REST API（qwen-vl-plus）|
 | 定时任务 | Spring `@Scheduled` |
+| 限流 | 自实现滑动窗口令牌桶（AI 接口、搜索防枚举）|
 | 连接池 | HikariCP |
 
 ---
@@ -315,6 +337,11 @@ Store（更新状态 + 调用 service 持久化）
 | 周报持久化 | `fd_weekly_report` + 唯一索引 | 幂等生成，重复调用不产生重复记录 |
 | SSE 流式 | 原生 fetch（H5） | uni.request 不支持 SSE，fetch 在 H5 模式下完整支持 |
 | JWT | access(2h) + refresh(7d) | 无感刷新，减少重新登录体验损耗 |
+| Redis 缓存 | Spring Cache + 分区 TTL | 菜品/偏好高频读少写，缓存命中显著降低 DB 压力 |
+| AI 限流 | 滑动窗口令牌桶（内存） | 无外部依赖，单实例适用，保护 DashScope 配额 |
+| WS 重连 | 指数退避（最多5次） | 避免断网后瞬间洪泛重连，上限防止无效持续重试 |
+| 好友搜索防枚举 | 频率限制 + 最短关键词 2字 | 防止遍历全量用户，兼顾性能与安全 |
+| 活动评价 | 唯一索引 `(group_id, user_id)` | 保证每人只能评价一次，DB 层幂等兜底 |
 
 ---
 
@@ -326,6 +353,13 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/fanda
     password: ${DB_PASSWORD:tmh123}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}   # 本地开发可留空
+  cache:
+    type: redis
   ai:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:your-key}   # 必须配置
@@ -341,12 +375,14 @@ jwt:
 ```
 
 **启动前必做：**
-1. 在 IntelliJ Maven 面板点"重新加载所有 Maven 项目"（下载 spring-ai-alibaba 依赖）
+
+1. 在 IntelliJ Maven 面板点"重新加载所有 Maven 项目"（下载 spring-ai-alibaba + Redis 依赖）
 2. 配置环境变量 `DASHSCOPE_API_KEY=sk-xxxxxx`（从 dashscope.aliyun.com 获取）
 3. 确保 MySQL 已启动，数据库会自动创建
+4. 本地启动 Redis（`redis-server`，默认 6379）；生产环境通过 `REDIS_HOST/PORT/PASSWORD` 注入
 
 ---
 
-*文档版本: v2.0*
-*更新日期: 2026-04-15*
-*主要变更: 补充后端架构、AI 智能体（7个端点）、加权推荐算法、每周周报、图片识别、对话记忆*
+*文档版本: v3.0*
+*更新日期: 2026-04-16*
+*主要变更: 社交功能（好友关系、活动评价、群聊）、工程优化（Redis 缓存、AI 限流、WS 断线重连、图片校验、搜索防枚举）*

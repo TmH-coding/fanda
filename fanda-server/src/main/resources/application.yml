@@ -7,6 +7,21 @@ spring:
     username: root
     password: ${DB_PASSWORD:tmh123}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000   # 10分钟默认 TTL
   ai:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:your-dashscope-api-key-here}
