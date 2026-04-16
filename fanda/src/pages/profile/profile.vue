@@ -1,6 +1,13 @@
 <template>
   <view class="fd-page">
-    <fd-nav-bar title="我的" />
+    <fd-nav-bar title="我的">
+      <template #right>
+        <view v-if="pendingCount > 0" class="sync-badge" @tap="manualSync">
+          <text class="sync-badge__num">{{ pendingCount }}</text>
+          <text class="sync-badge__icon">↑</text>
+        </view>
+      </template>
+    </fd-nav-bar>
 
     <!-- 用户头像区 -->
     <view class="profile-header">
@@ -29,6 +36,11 @@
         <text class="stat-num">{{ prefStore.favoriteCount }}</text>
         <text class="stat-label">收藏</text>
       </view>
+    </view>
+
+    <!-- 打卡热力图 -->
+    <view class="section fd-card">
+      <fd-heatmap :count-map="heatmapData" @cell-tap="onHeatmapTap" />
     </view>
 
     <!-- 口味偏好设置 -->
@@ -150,6 +162,21 @@
       </view>
     </view>
 
+    <!-- 我的自定义食物 -->
+    <view v-if="isRemoteMode && myFoods.length > 0" class="section fd-card">
+      <view class="section-header">
+        <text class="section-title">🍽️ 我录入的食物</text>
+        <text class="section-sub">{{ myFoods.length }} 个</text>
+      </view>
+      <view v-for="food in myFoods" :key="food.id" class="fav-item">
+        <text class="fav-name">{{ food.name }}</text>
+        <text class="fav-price">{{ food.category }}</text>
+        <view class="fav-remove" @tap="deleteMyFood(food.id)">
+          <text>删除</text>
+        </view>
+      </view>
+    </view>
+
     <!-- 数据管理 -->
     <view class="section fd-card">
       <text class="section-title">⚙️ 数据管理</text>
@@ -163,6 +190,10 @@
       </view>
       <view class="menu-item" @tap="goStats">
         <text class="menu-item-label">📊 我的报告</text>
+        <text class="menu-item-arrow">›</text>
+      </view>
+      <view class="menu-item" @tap="goFoodCreate">
+        <text class="menu-item-label">🍽️ 录入自定义食物</text>
         <text class="menu-item-arrow">›</text>
       </view>
       <view class="fd-btn--outline" style="margin-top: 16rpx" @tap="clearData">
@@ -189,8 +220,13 @@ import { spicyLevels } from '@/config/theme'
 import { storage } from '@/utils/storage'
 import config from '@/config'
 import { ACHIEVEMENT_CATEGORIES } from '@/data/achievements'
+import { useOfflineSync } from '@/composables/useOfflineSync'
+import { flush, queueSize } from '@/utils/offlineQueue'
+import { getService } from '@/services/factory'
+import { get, del } from '@/utils/http'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
+import FdHeatmap from '@/components/common/fd-heatmap.vue'
 
 const recordStore = useRecordStore()
 const prefStore = usePreferenceStore()
@@ -198,6 +234,45 @@ const achievementStore = useAchievementStore()
 const foodStore = useFoodStore()
 
 const isRemoteMode = computed(() => config.dataMode === 'remote')
+
+// 打卡热力图数据：日期 -> 当天记录条数
+const heatmapData = computed(() => {
+  const map = {}
+  for (const r of recordStore.records) {
+    map[r.date] = (map[r.date] || 0) + 1
+  }
+  return map
+})
+
+function onHeatmapTap(cell) {
+  uni.showToast({ title: `${cell.date} 记录 ${cell.count} 餐`, icon: 'none' })
+}
+
+// 离线队列同步状态
+const { pendingCount, refresh: refreshSync } = useOfflineSync()
+
+async function manualSync() {
+  if (queueSize() === 0) return
+  uni.showToast({ title: '同步中...', icon: 'loading', duration: 2000 })
+  try {
+    const recordService = getService('record')
+    const budgetService = getService('budget')
+    const count = await flush({
+      record: {
+        add:    (p) => recordService.save(p),
+        remove: (p) => recordService.delete(p),
+      },
+      budget: {
+        add:    (p) => budgetService.addExpense(p),
+        remove: (p) => budgetService.deleteExpense(p),
+      },
+    })
+    refreshSync()
+    uni.showToast({ title: count > 0 ? `已同步 ${count} 条` : '无需同步', icon: 'success' })
+  } catch {
+    uni.showToast({ title: '同步失败，请检查网络', icon: 'none' })
+  }
+}
 
 // 成就分类 tab
 const achTab = ref('streak')
@@ -261,6 +336,10 @@ function goStats() {
   uni.navigateTo({ url: '/pages/stats/stats' })
 }
 
+function goFoodCreate() {
+  uni.navigateTo({ url: '/pages/food-create/food-create' })
+}
+
 function goAi() {
   uni.navigateTo({ url: '/pages/ai/ai' })
 }
@@ -298,6 +377,39 @@ const blacklistItems = computed(() => {
   const ids = prefStore.blacklistIds
   return foodStore.foods.filter((f) => ids.includes(f.id))
 })
+
+// 我的自定义食物
+const myFoods = ref([])
+
+async function loadMyFoods() {
+  if (!isRemoteMode.value) return
+  try {
+    const res = await get('/api/foods/mine')
+    myFoods.value = res?.data ?? []
+  } catch {
+    // 忽略加载失败
+  }
+}
+
+async function deleteMyFood(foodCode) {
+  uni.showModal({
+    title: '确认删除',
+    content: '删除后该食物将从推荐中移除，不可恢复。',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          await del('/api/foods/' + foodCode)
+          myFoods.value = myFoods.value.filter((f) => f.id !== foodCode)
+          foodStore.loaded = false
+          await foodStore.load()
+          uni.showToast({ title: '已删除', icon: 'success' })
+        } catch {
+          uni.showToast({ title: '删除失败', icon: 'none' })
+        }
+      }
+    },
+  })
+}
 
 function setSpicy(level) {
   prefStore.update({ spicyLevel: level })
@@ -337,6 +449,9 @@ onMounted(async () => {
 
   // 检查成就
   achievementStore.check(achStats.value)
+
+  // 加载自定义食物
+  loadMyFoods()
 })
 </script>
 
@@ -560,5 +675,24 @@ onMounted(async () => {
   font-size: $fd-font-base;
   color: $fd-danger;
   font-weight: 600;
+}
+
+.sync-badge {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  background: rgba($fd-danger, 0.1);
+  border-radius: 24rpx;
+  padding: 4rpx 12rpx;
+  &:active { opacity: 0.7; }
+}
+.sync-badge__num {
+  font-size: $fd-font-xs;
+  color: $fd-danger;
+  font-weight: 700;
+}
+.sync-badge__icon {
+  font-size: $fd-font-xs;
+  color: $fd-danger;
 }
 </style>

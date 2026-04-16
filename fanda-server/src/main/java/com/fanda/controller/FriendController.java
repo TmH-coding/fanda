@@ -3,10 +3,12 @@ package com.fanda.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fanda.dto.response.ApiResponse;
 import com.fanda.entity.Friendship;
+import com.fanda.entity.MealRecord;
 import com.fanda.entity.User;
 import com.fanda.exception.BusinessException;
 import com.fanda.exception.ErrorCode;
 import com.fanda.mapper.FriendshipMapper;
+import com.fanda.mapper.MealRecordMapper;
 import com.fanda.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -35,12 +37,60 @@ public class FriendController {
 
     private final FriendshipMapper friendshipMapper;
     private final UserMapper userMapper;
+    private final MealRecordMapper mealRecordMapper;
 
     // 搜索防枚举：每个用户每分钟最多 20 次搜索
     private final ConcurrentHashMap<String, AtomicInteger> searchCount = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong>   searchWindow = new ConcurrentHashMap<>();
     private static final int  SEARCH_LIMIT  = 20;
     private static final long SEARCH_WINDOW = 60_000L;
+
+    // ── 好友动态（最近 30 条用餐记录） ───────────────────────────────
+    @GetMapping("/feed")
+    public ApiResponse<List<Map<String, Object>>> feed(Authentication authentication) {
+        Long currentUserId = getCurrentUserId(authentication);
+
+        // 获取所有好友的 userId
+        List<Friendship> friendships = friendshipMapper.selectList(new LambdaQueryWrapper<Friendship>()
+                .eq(Friendship::getStatus, "accepted")
+                .and(w -> w.eq(Friendship::getRequesterId, currentUserId)
+                            .or().eq(Friendship::getAddresseeId, currentUserId)));
+
+        if (friendships.isEmpty()) return ApiResponse.ok(List.of());
+
+        List<Long> friendIds = friendships.stream()
+                .map(f -> f.getRequesterId().equals(currentUserId) ? f.getAddresseeId() : f.getRequesterId())
+                .distinct()
+                .toList();
+
+        // 查询这些好友最近 30 条记录，按时间倒序
+        List<MealRecord> records = mealRecordMapper.selectList(new LambdaQueryWrapper<MealRecord>()
+                .in(MealRecord::getUserId, friendIds)
+                .orderByDesc(MealRecord::getCreatedAt)
+                .last("LIMIT 30"));
+
+        // 构建 userId -> User 映射
+        Map<Long, User> userMap = new HashMap<>();
+        for (Long fid : friendIds) {
+            User u = userMapper.selectById(fid);
+            if (u != null) userMap.put(fid, u);
+        }
+
+        List<Map<String, Object>> result = records.stream().map(r -> {
+            User u = userMap.get(r.getUserId());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", r.getId());
+            m.put("nickname", u != null ? (u.getNickname() != null ? u.getNickname() : u.getUsername()) : "未知");
+            m.put("avatar", u != null ? u.getAvatar() : null);
+            m.put("date", r.getRecordDate() != null ? r.getRecordDate().toString() : null);
+            m.put("mealType", r.getMealType());
+            m.put("foodName", r.getFoodName());
+            m.put("cost", r.getCost());
+            return m;
+        }).collect(Collectors.toList());
+
+        return ApiResponse.ok(result);
+    }
 
     // ── 搜索用户 ────────────────────────────────────────────────────
     @GetMapping("/search")

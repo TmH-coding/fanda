@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS fd_meal_record (
   food_name   VARCHAR(100) NOT NULL,
   food_id     BIGINT       NULL,
   cost        DECIMAL(8,2) NOT NULL DEFAULT 0,
+  rating      TINYINT      NULL,
   created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES fd_user(id) ON DELETE CASCADE,
   INDEX idx_user_date (user_id, record_date)
@@ -224,5 +225,33 @@ CREATE TABLE IF NOT EXISTS fd_user_blacklist_food (
   FOREIGN KEY (user_id) REFERENCES fd_user(id) ON DELETE CASCADE,
   FOREIGN KEY (food_id) REFERENCES fd_food_item(id) ON DELETE CASCADE,
   UNIQUE INDEX idx_user_food (user_id, food_id)
+) ENGINE=InnoDB;
+
+-- 好友关系
+CREATE TABLE IF NOT EXISTS fd_friendship (
+  id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+  requester_id BIGINT      NOT NULL,
+  addressee_id BIGINT      NOT NULL,
+  status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (requester_id) REFERENCES fd_user(id) ON DELETE CASCADE,
+  FOREIGN KEY (addressee_id) REFERENCES fd_user(id) ON DELETE CASCADE,
+  UNIQUE INDEX idx_requester_addressee (requester_id, addressee_id),
+  INDEX idx_addressee (addressee_id),
+  INDEX idx_status (status)
+) ENGINE=InnoDB;
+
+-- 拼饭组评价
+CREATE TABLE IF NOT EXISTS fd_group_review (
+  id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+  group_id   BIGINT      NOT NULL,
+  user_id    BIGINT      NOT NULL,
+  score      TINYINT     NOT NULL,
+  comment    VARCHAR(500) NOT NULL DEFAULT '',
+  created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (group_id) REFERENCES fd_social_group(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES fd_user(id) ON DELETE CASCADE,
+  UNIQUE INDEX idx_group_user (group_id, user_id)
 ) ENGINE=InnoDB;
 

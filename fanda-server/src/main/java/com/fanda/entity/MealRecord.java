@@ -32,6 +32,8 @@ public class MealRecord {
 
     private BigDecimal cost;
 
+    private Integer rating;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

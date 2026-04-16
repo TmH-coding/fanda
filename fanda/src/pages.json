@@ -69,6 +69,13 @@
         "navigationBarTitleText": "我的好友",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/food-create/food-create",
+      "style": {
+        "navigationBarTitleText": "录入食物",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

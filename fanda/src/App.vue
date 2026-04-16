@@ -7,10 +7,15 @@ async function flushOfflineQueue() {
   if (queueSize() === 0) return
   try {
     const recordService = getService('record')
+    const budgetService = getService('budget')
     const count = await flush({
       record: {
         add:    (payload) => recordService.save(payload),
         remove: (payload) => recordService.delete(payload),
+      },
+      budget: {
+        add:    (payload) => budgetService.addExpense(payload),
+        remove: (payload) => budgetService.deleteExpense(payload),
       },
     })
     if (count > 0) {
@@ -30,6 +35,13 @@ export default {
       if (!token) {
         uni.reLaunch({ url: '/pages/login/login' })
       }
+      // 网络恢复时自动回放离线队列
+      uni.onNetworkStatusChange((res) => {
+        if (res.isConnected) {
+          console.log('[App] 网络已恢复，尝试同步离线队列')
+          flushOfflineQueue()
+        }
+      })
     }
   },
   onShow() {

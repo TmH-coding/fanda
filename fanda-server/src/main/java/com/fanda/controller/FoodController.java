@@ -129,6 +129,29 @@ public class FoodController {
         return ApiResponse.ok(toResponse(food));
     }
 
+    @GetMapping("/mine")
+    public ApiResponse<List<FoodItemResponse>> listMine(Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        List<FoodItem> foods = foodItemMapper.selectList(
+                new LambdaQueryWrapper<FoodItem>()
+                        .eq(FoodItem::getIsSystem, false)
+                        .eq(FoodItem::getUserId, userId));
+        foods.forEach(this::loadChildren);
+        return ApiResponse.ok(foods.stream().map(this::toResponse).collect(Collectors.toList()));
+    }
+
+    @DeleteMapping("/{foodCode}")
+    @CacheEvict(value = "foods", allEntries = true)
+    public ApiResponse<Void> delete(@PathVariable String foodCode, Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        FoodItem food = foodItemMapper.selectOne(
+                new LambdaQueryWrapper<FoodItem>().eq(FoodItem::getFoodCode, foodCode));
+        if (food == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        if (!userId.equals(food.getUserId())) throw new BusinessException(ErrorCode.FORBIDDEN);
+        foodItemMapper.deleteById(food.getId());
+        return ApiResponse.ok();
+    }
+
     private void loadChildren(FoodItem food) {
         Long id = food.getId();
         food.setTags(foodTagMapper.selectList(

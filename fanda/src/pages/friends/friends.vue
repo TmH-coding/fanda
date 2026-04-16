@@ -61,6 +61,36 @@
       </view>
     </view>
 
+    <!-- 好友动态 -->
+    <view v-if="activeTab === 'feed'">
+      <view v-if="feedLoading" class="loading-wrap">
+        <text class="fd-text-secondary">加载动态中...</text>
+      </view>
+      <view v-else-if="feedItems.length === 0" class="empty-wrap">
+        <text class="empty-icon">📰</text>
+        <text class="empty-text">暂无好友动态，多加几个好友吧~</text>
+      </view>
+      <view v-for="item in feedItems" :key="item.id" class="feed-card fd-card">
+        <view class="feed-header">
+          <view class="user-avatar feed-avatar">
+            <text class="avatar-text">{{ item.avatar || '😋' }}</text>
+          </view>
+          <view class="feed-meta">
+            <text class="user-nickname">{{ item.nickname }}</text>
+            <text class="feed-time">{{ item.date }} · {{ item.mealTypeLabel }}</text>
+          </view>
+        </view>
+        <text class="feed-food">{{ item.foodName }}</text>
+        <view v-if="item.cost" class="feed-cost">
+          <text class="cost-label">花了 </text>
+          <text class="cost-val">¥{{ item.cost }}</text>
+        </view>
+        <view v-if="item.rating" class="feed-rating">
+          <text v-for="s in 5" :key="s" class="star" :class="{ 'star--active': s <= item.rating }">★</text>
+        </view>
+      </view>
+    </view>
+
     <!-- 好友列表 -->
     <view v-if="activeTab === 'friends'">
       <view v-if="loading" class="loading-wrap">
@@ -119,10 +149,12 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { get, post, del } from '@/utils/http'
+import { mealTypeLabel } from '@/utils/date'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 
-const activeTab = ref('friends')
+const activeTab = ref('feed')
 const tabs = [
+  { key: 'feed', label: '动态' },
   { key: 'friends', label: '好友' },
   { key: 'requests', label: '申请' },
   { key: 'search', label: '搜索' },
@@ -130,11 +162,28 @@ const tabs = [
 
 const friends = ref([])
 const requests = ref([])
+const feedItems = ref([])
+const feedLoading = ref(false)
 const keyword = ref('')
 const searchResults = ref([])
 const loading = ref(false)
 const searching = ref(false)
 const searched = ref(false)
+
+async function loadFeed() {
+  feedLoading.value = true
+  try {
+    const data = await get('/api/friends/feed')
+    feedItems.value = (data || []).map(item => ({
+      ...item,
+      mealTypeLabel: mealTypeLabel(item.mealType),
+    }))
+  } catch {
+    feedItems.value = []
+  } finally {
+    feedLoading.value = false
+  }
+}
 
 async function loadFriends() {
   loading.value = true
@@ -214,11 +263,13 @@ function inviteToGroup(friend) {
 }
 
 watch(activeTab, (tab) => {
+  if (tab === 'feed') loadFeed()
   if (tab === 'friends') loadFriends()
   if (tab === 'requests') loadRequests()
 })
 
 onMounted(() => {
+  loadFeed()
   loadFriends()
   loadRequests()
 })
@@ -383,5 +434,59 @@ onMounted(() => {
   font-size: $fd-font-sm;
   font-weight: 600;
   &:active { opacity: 0.85; }
+}
+
+/* 好友动态 */
+.feed-card {
+  margin: 0 $fd-space-md $fd-space-sm;
+}
+.feed-header {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+  margin-bottom: $fd-space-xs;
+}
+.feed-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  flex-shrink: 0;
+}
+.feed-meta {
+  @include fd-flex-column;
+  gap: 2rpx;
+}
+.feed-time {
+  font-size: $fd-font-xs;
+  color: $fd-text-light;
+}
+.feed-food {
+  font-size: $fd-font-md;
+  font-weight: 600;
+  color: $fd-text;
+  display: block;
+  margin-bottom: $fd-space-xs;
+}
+.feed-cost {
+  display: flex;
+  align-items: center;
+}
+.cost-label {
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+}
+.cost-val {
+  font-size: $fd-font-sm;
+  font-weight: 700;
+  color: $fd-primary;
+}
+.feed-rating {
+  display: flex;
+  gap: 4rpx;
+  margin-top: 6rpx;
+}
+.star {
+  font-size: 28rpx;
+  color: $fd-border;
+  &--active { color: #FFB800; }
 }
 </style>

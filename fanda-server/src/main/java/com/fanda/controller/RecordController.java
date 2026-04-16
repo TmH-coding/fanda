@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/records")
@@ -109,6 +110,24 @@ public class RecordController {
         recordNutritionMapper.delete(
                 new LambdaQueryWrapper<RecordNutrition>().eq(RecordNutrition::getRecordId, id));
         mealRecordMapper.deleteById(id);
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/{id}/rating")
+    public ApiResponse<Void> rate(
+            @PathVariable Long id,
+            @RequestBody Map<String, Integer> body,
+            Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        MealRecord record = mealRecordMapper.selectById(id);
+        if (record == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+        if (!record.getUserId().equals(userId)) throw new BusinessException(ErrorCode.FORBIDDEN);
+
+        Integer score = body.get("score");
+        if (score == null || score < 1 || score > 5) throw new BusinessException(ErrorCode.BAD_REQUEST);
+
+        record.setRating(score);
+        mealRecordMapper.updateById(record);
         return ApiResponse.ok();
     }
 

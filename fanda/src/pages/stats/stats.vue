@@ -26,8 +26,11 @@
       </view>
     </view>
 
+    <!-- 加载失败 -->
+    <fd-error-state v-if="loadError" text="报告加载失败，请检查网络" @retry="loadStats" />
+
     <!-- 消费趋势 -->
-    <block v-if="activeTab === 'expense'">
+    <block v-else-if="activeTab === 'expense'">
       <view class="section fd-card" v-if="expenseStats">
         <!-- 汇总数字 -->
         <view class="summary-row">
@@ -88,7 +91,7 @@
     </block>
 
     <!-- 营养摄入 -->
-    <block v-if="activeTab === 'nutrition'">
+    <block v-else-if="activeTab === 'nutrition'">
       <view class="section fd-card" v-if="nutritionStats && nutritionStats.totalRecords > 0">
         <view class="summary-row">
           <view class="summary-item">
@@ -126,7 +129,7 @@
     </block>
 
     <!-- 月度对比 -->
-    <block v-if="activeTab === 'compare'">
+    <block v-else-if="activeTab === 'compare'">
       <view v-if="compareStats" class="section fd-card">
         <!-- 消费对比 -->
         <text class="chart-title">💰 消费对比</text>
@@ -205,7 +208,7 @@
     </block>
 
     <!-- 用餐习惯 -->
-    <block v-if="activeTab === 'habit'">
+    <block v-else-if="activeTab === 'habit'">
       <view v-if="habitStats">
         <!-- 数据卡片 -->
         <view class="section fd-card">
@@ -263,6 +266,15 @@
       </view>
     </block>
 
+    <!-- 月报导出 -->
+    <view class="export-section">
+      <!-- 隐藏的绘制画布 -->
+      <canvas canvas-id="report-canvas" class="report-canvas" />
+      <view class="fd-btn export-btn" :class="{ 'fd-btn--disabled': exporting }" @tap="exportReport">
+        <text>{{ exporting ? '生成中...' : '📥 导出本月报告图片' }}</text>
+      </view>
+    </view>
+
   </view>
 </template>
 
@@ -270,6 +282,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { get } from '@/utils/http'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
+import FdErrorState from '@/components/common/fd-error-state.vue'
 
 const tabs = [
   { key: 'expense',  label: '消费趋势' },
@@ -284,6 +297,7 @@ const year = ref(now.getFullYear())
 const month = ref(now.getMonth() + 1)
 
 const loading = ref(false)
+const loadError = ref(false)
 const expenseStats = ref(null)
 const nutritionStats = ref(null)
 const habitStats = ref(null)
@@ -301,6 +315,7 @@ function changeMonth(delta) {
 
 async function loadStats() {
   loading.value = true
+  loadError.value = false
   try {
     const prevMonth = month.value === 1 ? 12 : month.value - 1
     const prevYear  = month.value === 1 ? year.value - 1 : year.value
@@ -324,6 +339,7 @@ async function loadStats() {
     compareNutritionRaw.value = (nut && prevNut) ? { curr: nut, prev: prevNut } : null
   } catch (e) {
     console.error('加载统计失败', e)
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -409,6 +425,136 @@ function compareDeltaClass(curr, prev) {
   if (c > p) return 'compare-delta--up'
   if (c < p) return 'compare-delta--down'
   return 'compare-delta--flat'
+}
+
+// ─── 月报图片导出 ────────────────────────────────────────────────
+const exporting = ref(false)
+
+function exportReport() {
+  if (exporting.value) return
+  const exp = expenseStats.value
+  if (!exp) {
+    uni.showToast({ title: '数据还未加载，请稍候', icon: 'none' })
+    return
+  }
+  exporting.value = true
+
+  const W = 600
+  const H = 800
+  const ctx = uni.createCanvasContext('report-canvas')
+
+  // 背景
+  ctx.setFillStyle('#FFF5F5')
+  ctx.fillRect(0, 0, W, H)
+
+  // 标题
+  ctx.setFillStyle('#FF6B6B')
+  ctx.setFontSize(28)
+  ctx.setTextAlign('center')
+  ctx.fillText(`${year.value}年${month.value}月 饮食报告`, W / 2, 60)
+
+  // 分割线
+  ctx.setStrokeStyle('#FFE0E0')
+  ctx.setLineWidth(1)
+  ctx.beginPath()
+  ctx.moveTo(40, 80)
+  ctx.lineTo(W - 40, 80)
+  ctx.stroke()
+
+  // 消费摘要
+  ctx.setFillStyle('#333')
+  ctx.setFontSize(20)
+  ctx.setTextAlign('left')
+  ctx.fillText('💰 本月消费', 40, 120)
+
+  const totalSpent = Number(exp.total || 0).toFixed(2)
+  const dayAvg = Number(exp.avgPerDay || 0).toFixed(2)
+  const activeDays = exp.activeDays || 0
+
+  ctx.setFillStyle('#FF6B6B')
+  ctx.setFontSize(36)
+  ctx.setTextAlign('center')
+  ctx.fillText(`¥${totalSpent}`, W / 2, 175)
+
+  ctx.setFillStyle('#888')
+  ctx.setFontSize(18)
+  ctx.fillText(`日均 ¥${dayAvg} · 记录 ${activeDays} 天`, W / 2, 205)
+
+  // 营养分布
+  ctx.setFillStyle('#333')
+  ctx.setFontSize(20)
+  ctx.setTextAlign('left')
+  ctx.fillText('🥗 营养摄入', 40, 255)
+
+  const nutMap = nutritionStats.value?.nutritionCount || {}
+  const nutEntries = Object.entries(nutMap)
+  const nutColors = { carb: '#FFE66D', protein: '#FF6B6B', veggie: '#4ECDC4', fruit: '#A8E6CF' }
+  const nutLabels = { carb: '碳水', protein: '蛋白质', veggie: '蔬菜', fruit: '水果' }
+  const maxNut = Math.max(...nutEntries.map(([, v]) => Number(v)), 1)
+  const barMaxW = W - 200
+
+  nutEntries.forEach(([k, v], i) => {
+    const y = 285 + i * 50
+    const barW = Math.max(4, (Number(v) / maxNut) * barMaxW)
+    ctx.setFillStyle('#f0f0f0')
+    ctx.fillRoundRect(140, y, barMaxW, 28, 6)
+    ctx.setFillStyle(nutColors[k] || '#4ECDC4')
+    ctx.fillRoundRect(140, y, barW, 28, 6)
+    ctx.setFillStyle('#555')
+    ctx.setFontSize(18)
+    ctx.setTextAlign('left')
+    ctx.fillText(nutLabels[k] || k, 40, y + 20)
+    ctx.setTextAlign('right')
+    ctx.fillText(`${v}次`, W - 40, y + 20)
+  })
+
+  // 用餐习惯
+  const habitY = 290 + nutEntries.length * 50 + 20
+  ctx.setFillStyle('#333')
+  ctx.setFontSize(20)
+  ctx.setTextAlign('left')
+  ctx.fillText('🍽️ 用餐习惯', 40, habitY)
+
+  const mealMap = habitStats.value?.mealTypeCount || {}
+  const mealLabels = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' }
+  const mealEntries = Object.entries(mealMap)
+  mealEntries.forEach(([k, v], i) => {
+    ctx.setFillStyle('#888')
+    ctx.setFontSize(18)
+    ctx.setTextAlign('left')
+    ctx.fillText(`${mealLabels[k] || k}: ${v}次`, 40 + i * 190, habitY + 36)
+  })
+
+  // 底部水印
+  ctx.setFillStyle('#ccc')
+  ctx.setFontSize(16)
+  ctx.setTextAlign('center')
+  ctx.fillText('饭搭 · 让每顿饭都有意义', W / 2, H - 30)
+
+  ctx.draw(false, () => {
+    uni.canvasToTempFilePath({
+      canvasId: 'report-canvas',
+      fileType: 'png',
+      quality: 1,
+      success(res) {
+        exporting.value = false
+        uni.saveImageToPhotosAlbum({
+          filePath: res.tempFilePath,
+          success() {
+            uni.showToast({ title: '已保存到相册 ✅', icon: 'success' })
+          },
+          fail() {
+            // 保存失败时改为预览
+            uni.previewImage({ urls: [res.tempFilePath] })
+          },
+        })
+      },
+      fail() {
+        exporting.value = false
+        uni.showToast({ title: '生成失败，请重试', icon: 'none' })
+      },
+    })
+  })
 }
 </script>
 
@@ -641,5 +787,19 @@ function compareDeltaClass(curr, prev) {
 .nutrition-compare-bars { flex: 1; display: flex; flex-direction: column; gap: 8rpx; }
 .nutrition-compare-bar-wrap { display: flex; align-items: center; gap: 12rpx; }
 .nutrition-compare-sub { font-size: 20rpx; color: $fd-text-secondary; width: 50rpx; flex-shrink: 0; }
+
+.export-section {
+  padding: $fd-space-base $fd-space-md $fd-space-xl;
+}
+.report-canvas {
+  width: 600px;
+  height: 800px;
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  opacity: 0;
+}
+.export-btn { width: 100%; }
+.fd-btn--disabled { opacity: 0.5; pointer-events: none; }
 
 </style>
