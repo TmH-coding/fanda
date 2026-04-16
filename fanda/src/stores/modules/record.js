@@ -72,6 +72,31 @@ export const useRecordStore = defineStore('record', {
         if (e?.isOffline) enqueue('add', 'record', record)
       }
       this.records.push(record)
+
+      // 记录后实时检查成就
+      try {
+        const { useAchievementStore } = await import('@/stores/modules/achievement')
+        const { usePreferenceStore }  = await import('@/stores/modules/preference')
+        const achStore  = useAchievementStore()
+        const prefStore = usePreferenceStore()
+        const stats = {
+          totalRecords:   this.records.length,
+          streak:         this.streak,
+          uniqueFoods:    this.uniqueFoodCount,
+          favorites:      prefStore.favoriteCount ?? 0,
+          breakfastCount: this.breakfastCount,
+          blacklistCount: prefStore.blacklistCount ?? 0,
+          socialJoined: 0, socialCreated: 0, friendCount: 0,
+          budgetWeekStreak: 0, budgetMonthOk: 0,
+          lateNightCount: 0, vegStreak: 0,
+        }
+        const newAchs = await achStore.check(stats)
+        for (const ach of newAchs) {
+          uni.showToast({ title: `🏆 解锁成就：${ach.name}！`, icon: 'none', duration: 3000 })
+        }
+      } catch {
+        // 成就检查不影响主流程
+      }
     },
     async remove(id) {
       const service = getService('record')

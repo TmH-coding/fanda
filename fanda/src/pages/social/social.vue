@@ -45,11 +45,44 @@
         </view>
       </view>
 
-      <view v-if="group.currentPeople < group.maxPeople" class="group-join fd-btn" @tap="onJoin(group.id)">
+      <view v-if="group.currentPeople < group.maxPeople" class="group-join fd-btn" @tap.stop="onJoin(group.id)">
         <text>加入 🙋</text>
       </view>
       <view v-else class="group-full">
         <text class="fd-text-light">已满员</text>
+      </view>
+
+      <!-- 留言板（远程模式） -->
+      <view v-if="isRemote" class="message-board">
+        <view class="message-board__header">
+          <text class="message-board__title">留言板</text>
+        </view>
+        <view v-if="!messages[group.id]" class="message-loading">
+          <text class="fd-text-light" @tap.stop="loadMessages(group.id)">查看留言 ›</text>
+        </view>
+        <view v-else>
+          <view v-if="messages[group.id].length === 0" class="message-empty">
+            <text class="fd-text-light">还没有留言，来说一句吧</text>
+          </view>
+          <view v-for="msg in messages[group.id]" :key="msg.id" class="message-item">
+            <text class="message-user">{{ msg.username }}</text>
+            <text class="message-content">{{ msg.content }}</text>
+            <text class="message-time">{{ formatMsgTime(msg.createdAt) }}</text>
+          </view>
+          <view class="message-input-row" @tap.stop>
+            <input
+              class="message-input"
+              v-model="inputMap[group.id]"
+              placeholder="说点什么..."
+              maxlength="100"
+              confirm-type="send"
+              @confirm="sendMessage(group.id)"
+            />
+            <view class="message-send" @tap.stop="sendMessage(group.id)">
+              <text>发送</text>
+            </view>
+          </view>
+        </view>
       </view>
     </view>
 
@@ -79,6 +112,8 @@
 import { ref, onMounted } from 'vue'
 import { useSocialStore } from '@/stores/modules/social'
 import { generateId } from '@/utils/format'
+import { get, post } from '@/utils/http'
+import config from '@/config'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
 import FdModal from '@/components/common/fd-modal.vue'
@@ -87,6 +122,12 @@ import FdSkeleton from '@/components/common/fd-skeleton.vue'
 const socialStore = useSocialStore()
 const showCreate = ref(false)
 const listLoading = ref(true)
+const isRemote = config.dataMode === 'remote'
+
+// 留言板：groupId -> 消息列表（undefined = 未加载）
+const messages = ref({})
+// 输入框：groupId -> 当前输入内容
+const inputMap = ref({})
 
 const form = ref({
   title: '',
@@ -94,6 +135,39 @@ const form = ref({
   location: '',
   maxPeople: '4',
 })
+
+async function loadMessages(groupId) {
+  try {
+    const data = await get(`/api/social/groups/${groupId}/messages`)
+    messages.value = { ...messages.value, [groupId]: data || [] }
+    if (!inputMap.value[groupId]) inputMap.value[groupId] = ''
+  } catch {
+    uni.showToast({ title: '加载留言失败', icon: 'none' })
+  }
+}
+
+async function sendMessage(groupId) {
+  const content = (inputMap.value[groupId] || '').trim()
+  if (!content) return
+  try {
+    const msg = await post(`/api/social/groups/${groupId}/messages`, { content })
+    messages.value[groupId] = [...(messages.value[groupId] || []), msg]
+    inputMap.value[groupId] = ''
+  } catch {
+    uni.showToast({ title: '发送失败', icon: 'none' })
+  }
+}
+
+function formatMsgTime(createdAt) {
+  if (!createdAt) return ''
+  const d = new Date(createdAt)
+  const now = new Date()
+  const diffMin = Math.floor((now - d) / 60000)
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  if (diffMin < 1440) return `${Math.floor(diffMin / 60)}小时前`
+  return d.toLocaleDateString()
+}
 
 function goDetail(id) {
   uni.navigateTo({ url: `/pages/social-detail/social-detail?id=${id}` })
@@ -256,6 +330,73 @@ onMounted(async () => {
 .group-full {
   text-align: center;
   margin-top: $fd-space-sm;
+}
+
+/* 留言板 */
+.message-board {
+  margin-top: $fd-space-base;
+  border-top: 2rpx solid $fd-border;
+  padding-top: $fd-space-sm;
+  &__header { margin-bottom: $fd-space-xs; }
+  &__title {
+    font-size: $fd-font-sm;
+    font-weight: 600;
+    color: $fd-text-secondary;
+  }
+}
+.message-loading, .message-empty {
+  padding: 12rpx 0;
+}
+.message-item {
+  display: flex;
+  align-items: baseline;
+  gap: $fd-space-xs;
+  padding: 8rpx 0;
+  border-bottom: 1rpx solid $fd-border;
+  &:last-of-type { border-bottom: none; }
+}
+.message-user {
+  font-size: $fd-font-xs;
+  font-weight: 700;
+  color: $fd-primary;
+  flex-shrink: 0;
+}
+.message-content {
+  font-size: $fd-font-sm;
+  color: $fd-text;
+  flex: 1;
+}
+.message-time {
+  font-size: 20rpx;
+  color: $fd-text-light;
+  flex-shrink: 0;
+}
+.message-input-row {
+  display: flex;
+  gap: $fd-space-xs;
+  margin-top: $fd-space-sm;
+}
+.message-input {
+  flex: 1;
+  height: 64rpx;
+  background: $fd-bg;
+  border-radius: $fd-radius-round;
+  padding: 0 $fd-space-sm;
+  font-size: $fd-font-sm;
+  border: 2rpx solid $fd-border;
+}
+.message-send {
+  background: $fd-primary;
+  color: #fff;
+  border-radius: $fd-radius-round;
+  padding: 0 $fd-space-base;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  font-size: $fd-font-sm;
+  font-weight: 600;
+  flex-shrink: 0;
+  &:active { opacity: 0.85; }
 }
 
 /* 表单 */

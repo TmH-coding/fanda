@@ -86,6 +86,7 @@ public class FriendController {
             m.put("mealType", r.getMealType());
             m.put("foodName", r.getFoodName());
             m.put("cost", r.getCost());
+            m.put("rating", r.getRating());
             return m;
         }).collect(Collectors.toList());
 

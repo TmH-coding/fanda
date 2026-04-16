@@ -22,12 +22,13 @@ export function useRecommend() {
 
   // 过滤后的候选菜品
   const candidates = computed(() => {
-    const prefs       = prefStore.preference
-    const recentIds   = recordStore.recentFoodIds(3)
-    const dailyBudget = budgetStore.dailySuggestion
-    const blacklist   = new Set(prefs.blacklist || [])
+    const prefs        = prefStore.preference
+    const recentIds    = recordStore.recentFoodIds(3)
+    const todayFoodIds = new Set(recordStore.todayRecords.map((r) => r.foodId).filter(Boolean))
+    const dailyBudget  = budgetStore.dailySuggestion
+    const blacklist    = new Set(prefs.blacklist || [])
 
-    return foodStore.foods.filter((food) => {
+    const baseFilter = (food) => {
       if (excludedCategories.value.includes(food.category)) return false
       if (prefs.allergies.some((a) => food.allergens.includes(a))) return false
       if (prefs.dislike.some((d) => food.tags.includes(d))) return false
@@ -36,10 +37,17 @@ export function useRecommend() {
       if (blacklist.has(food.id)) return false
       if (dailyBudget > 0) {
         const avgPrice = (food.priceRange[0] + food.priceRange[1]) / 2
-        if (avgPrice > dailyBudget * 1.5) return false
+        // 超支时收紧到日建议额的 80%，正常时放宽到 150%
+        const ratio = budgetStore.isOverBudget ? 0.8 : 1.5
+        if (avgPrice > dailyBudget * ratio) return false
       }
       return true
-    })
+    }
+
+    // 优先排除今日已吃，候选不足 3 个时才允许今日已吃的菜品出现
+    const withoutToday = foodStore.foods.filter((f) => baseFilter(f) && !todayFoodIds.has(f.id))
+    if (withoutToday.length >= 3) return withoutToday
+    return foodStore.foods.filter(baseFilter)
   })
 
   // 计算推荐权重（含自学习加权）
@@ -91,6 +99,11 @@ export function useRecommend() {
     const favoriteIds = new Set(prefStore.preference.favorites || [])
     const autoTags    = new Set(prefStore.preference.autoLearnedTags || [])
     const foodRecords = recordStore.records.filter(r => r.foodId === food.id)
+
+    if (budgetStore.isOverBudget) {
+      const avgPrice = Math.round((food.priceRange[0] + food.priceRange[1]) / 2)
+      return `本月预算已超支，推荐实惠的${food.name}（约¥${avgPrice}）💰`
+    }
 
     if (favoriteIds.has(food.id)) return `这是你的收藏菜品，今天再来一次 ❤️`
 

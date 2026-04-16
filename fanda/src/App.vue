@@ -26,6 +26,35 @@ async function flushOfflineQueue() {
   }
 }
 
+function checkMonthlyReportReminder() {
+  const now = new Date()
+  const day = now.getDate()
+  // 只在每月 1-3 日提示
+  if (day > 3) return
+
+  const key = `fd_monthly_reminder_${now.getFullYear()}_${now.getMonth() + 1}`
+  const reminded = uni.getStorageSync(key)
+  if (reminded) return
+
+  // 计算上个月
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+  const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+
+  uni.showModal({
+    title: '📊 查看上月饮食报告',
+    content: `${prevYear}年${prevMonth}月的饮食数据已汇总，去看看你上个月吃了什么？`,
+    confirmText: '去看看',
+    cancelText: '下次再说',
+    success: (res) => {
+      if (res.confirm) {
+        uni.navigateTo({ url: '/pages/stats/stats' })
+      }
+    },
+  })
+
+  uni.setStorageSync(key, '1')
+}
+
 export default {
   onLaunch() {
     console.log('饭搭 App Launch')
@@ -50,6 +79,8 @@ export default {
     if (config.dataMode === 'remote') {
       flushOfflineQueue()
     }
+    // 月初提醒查看上月报告（每月只提示一次）
+    checkMonthlyReportReminder()
   },
   onHide() {
     console.log('饭搭 App Hide')

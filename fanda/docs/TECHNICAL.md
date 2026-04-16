@@ -2,7 +2,7 @@
 
 > 记录当前已实现的完整功能与架构，供开发维护参考。
 >
-> 最后更新：2026-04-16
+> 最后更新：2026-04-16（v2.1）
 
 ---
 
@@ -204,12 +204,14 @@ flush handlers 接受 `{ record: { add, remove }, budget: { add, remove } }` 形
 | `fd_achievement_unlock` | 已解锁成就 |
 | `fd_friendship` | 好友关系（requester/addressee/status: pending\|accepted） |
 | `fd_group_review` | 拼饭组评价（score + comment） |
+| `fd_group_message` | 拼饭组留言板（group_id/user_id/username 冗余/content VARCHAR(300)） |
 
 ### 关键字段说明
 
 - `fd_meal_record.rating` — TINYINT NULL，1-5 星，通过 `PATCH /api/records/{id}/rating` 更新
 - `fd_food_item.is_system` — TINYINT(1)，0=用户自建，1=系统内置
 - `fd_friendship.status` — `pending`（待接受）/ `accepted`（已成为好友）
+- `fd_group_message.username` — 冗余字段，保存发送时的显示名（避免联表）；`content` 最长 300 字符
 
 ---
 
@@ -289,16 +291,20 @@ flush handlers 接受 `{ record: { add, remove }, budget: { add, remove } }` 形
 | GET | `/api/achievements` | 已解锁成就列表 |
 | POST | `/api/achievements/{id}/unlock` | 解锁成就 |
 
-### 拼饭社交 `/api/social`
+### 拼饭社交 `/api/social/groups`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/social` | 拼饭列表（支持 status 筛选） |
-| POST | `/api/social` | 创建拼饭组 |
-| POST | `/api/social/{id}/join` | 加入 |
-| DELETE | `/api/social/{id}/leave` | 退出 |
-| POST | `/api/social/{id}/vote` | 投票 |
-| DELETE | `/api/social/{id}` | 解散（仅创建者） |
+| GET | `/api/social/groups` | 拼饭列表（支持 status 筛选） |
+| GET | `/api/social/groups/{id}` | 拼饭组详情 |
+| POST | `/api/social/groups` | 创建拼饭组 |
+| POST | `/api/social/groups/{id}/join` | 加入 |
+| POST | `/api/social/groups/{id}/vote` | 投票 |
+| GET | `/api/social/groups/{id}/bill` | AA 账单（人均估算） |
+| GET | `/api/social/groups/{id}/messages` | 留言列表（最新 30 条，按时间正序） |
+| POST | `/api/social/groups/{id}/messages` | 发送留言（content ≤ 300 字） |
+| GET | `/api/social/groups/{id}/reviews` | 活动评价列表 |
+| POST | `/api/social/groups/{id}/reviews` | 提交评价（需是成员，每人一次） |
 
 ### 好友 `/api/friends`
 
@@ -345,6 +351,8 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - `pages/index/index.vue`
 - 根据时段（早/中/晚/宵夜）过滤菜品
 - 应用用户偏好（辣度/忌口/黑名单/排除法）
+- **今日去重** — 优先排除当日已记录的菜品；若去除后候选数 < 3，则回退到完整候选池
+- **预算感知价格过滤** — 超支时仅显示均价 ≤ 预算日均 × 0.8 的菜品；未超支时阈值为 1.5 倍；推荐理由文案自动切换为节省提示
 - "就吃这个"直接记录到当日对应餐次
 
 ### 7.3 饮食日历
@@ -353,6 +361,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 月历视图，有记录的日期标圆点
 - 支持按日查看三餐列表
 - 快速录入（选菜品 + 金额 + 营养标签）
+- **营养均衡提醒** — 检查近 3 天记录，若无任何含蔬菜/水果营养标签的记录，在日历顶部显示黄绿色提示横幅
 
 ### 7.4 预算管家
 
@@ -368,6 +377,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 发起拼饭（标题/地点/时间/人数/候选餐厅）
 - 投票选餐（每人一票，防重投）
 - 加入/退出/解散
+- **拼饭留言板**（远程模式）— 每个拼饭卡片下方可展开留言板，懒加载（点击"查看留言 ›"触发），发送留言实时追加，支持最新 30 条消息
 
 ### 7.6 个人中心
 
@@ -406,7 +416,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 
 - `pages/friends/friends.vue`
 - 四个 Tab：**动态** / 好友 / 请求 / 搜索
-- 动态：好友最近 30 条用餐记录，含昵称/头像/菜品/费用/评分
+- 动态：好友最近 30 条用餐记录，含昵称/头像/菜品/费用/评分（rating 字段由后端 FriendController 注入到 feed 响应 Map）
 - 搜索：按用户名/昵称模糊搜，显示当前关系状态（none/pending/accepted）
 - 好友请求：发送/接受/拒绝
 - 删除好友

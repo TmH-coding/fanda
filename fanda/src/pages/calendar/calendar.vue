@@ -2,6 +2,12 @@
   <view class="fd-page">
     <fd-nav-bar title="饮食日历" />
 
+    <!-- 营养均衡提醒 -->
+    <view v-if="nutritionWarning" class="nutrition-tip">
+      <text class="nutrition-tip__icon">🥗</text>
+      <text class="nutrition-tip__text">{{ nutritionWarning }}</text>
+    </view>
+
     <!-- 月份切换 -->
     <view class="month-bar">
       <view class="month-btn" @tap="prevMonth"><text>◀</text></view>
@@ -117,6 +123,26 @@ const dayRecords = computed(() => {
   return recordStore.getByDate(selectedDate.value)
 })
 
+// 营养均衡提醒：检查近 3 天是否缺少蔬菜/水果
+const nutritionWarning = computed(() => {
+  const now = new Date()
+  const days = [0, 1, 2].map((i) => {
+    const d = new Date(now.getTime() - i * 86400000)
+    return d.toISOString().slice(0, 10)
+  })
+  const VEG_KEYS = ['vegetable', 'veg', '蔬菜', 'fruit', '水果']
+  const hasVegOrFruit = days.some((date) => {
+    const recs = recordStore.getByDate(date)
+    return recs.some((r) =>
+      (r.nutrition || []).some((n) => VEG_KEYS.some((k) => n.toLowerCase().includes(k)))
+    )
+  })
+  if (!hasVegOrFruit && recordStore.records.length > 0) {
+    return '近 3 天没有蔬菜或水果记录，注意营养均衡哦'
+  }
+  return null
+})
+
 function mealLabel(type) { return mealTypeLabel(type) }
 
 function nutritionLabel(key) {
@@ -166,6 +192,19 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+.nutrition-tip {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-xs;
+  margin: $fd-space-sm $fd-space-md 0;
+  padding: 16rpx 20rpx;
+  background: rgba($fd-success, 0.08);
+  border-radius: $fd-radius;
+  border-left: 6rpx solid $fd-success;
+  &__icon { font-size: 32rpx; }
+  &__text { font-size: $fd-font-sm; color: darken(#4caf50, 10%); flex: 1; }
+}
+
 .month-bar {
   @include fd-flex-center;
   padding: $fd-space-base;

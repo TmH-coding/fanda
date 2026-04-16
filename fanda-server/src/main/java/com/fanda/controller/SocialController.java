@@ -36,6 +36,7 @@ public class SocialController {
     private final UserMapper userMapper;
     private final SocialRoomManager roomManager;
     private final GroupReviewMapper groupReviewMapper;
+    private final GroupMessageMapper groupMessageMapper;
 
     @GetMapping
     public ApiResponse<List<SocialGroup>> list(
@@ -225,6 +226,50 @@ public class SocialController {
         bill.put("status", group.getStatus());
 
         return ApiResponse.ok(bill);
+    }
+
+    // ── 获取留言列表 ─────────────────────────────────────────────────
+    @GetMapping("/{id}/messages")
+    public ApiResponse<List<GroupMessage>> getMessages(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "30") int limit) {
+        List<GroupMessage> messages = groupMessageMapper.selectList(
+                new LambdaQueryWrapper<GroupMessage>()
+                        .eq(GroupMessage::getGroupId, id)
+                        .orderByDesc(GroupMessage::getCreatedAt)
+                        .last("LIMIT " + Math.min(limit, 50)));
+        // 按时间正序返回
+        java.util.Collections.reverse(messages);
+        return ApiResponse.ok(messages);
+    }
+
+    // ── 发送留言 ─────────────────────────────────────────────────────
+    @PostMapping("/{id}/messages")
+    public ApiResponse<GroupMessage> addMessage(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+
+        Long userId = getCurrentUserId(authentication);
+        SocialGroup group = socialGroupMapper.selectById(id);
+        if (group == null) throw new BusinessException(ErrorCode.NOT_FOUND);
+
+        String content = body.containsKey("content") ? body.get("content").toString().trim() : "";
+        if (content.isEmpty() || content.length() > 300) throw new BusinessException(ErrorCode.BAD_REQUEST);
+
+        User user = userMapper.selectById(userId);
+        String displayName = user != null
+                ? (user.getNickname() != null ? user.getNickname() : user.getUsername())
+                : "匿名";
+
+        GroupMessage msg = new GroupMessage();
+        msg.setGroupId(id);
+        msg.setUserId(userId);
+        msg.setUsername(displayName);
+        msg.setContent(content);
+        groupMessageMapper.insert(msg);
+
+        return ApiResponse.ok(msg);
     }
 
     // ── 获取活动评价 ─────────────────────────────────────────────────

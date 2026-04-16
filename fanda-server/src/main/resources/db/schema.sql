@@ -255,3 +255,17 @@ CREATE TABLE IF NOT EXISTS fd_group_review (
   UNIQUE INDEX idx_group_user (group_id, user_id)
 ) ENGINE=InnoDB;
 
+-- 拼饭组留言板
+CREATE TABLE IF NOT EXISTS fd_group_message (
+  id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+  group_id   BIGINT       NOT NULL,
+  user_id    BIGINT       NOT NULL,
+  username   VARCHAR(50)  NOT NULL DEFAULT '',
+  content    VARCHAR(300) NOT NULL,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (group_id) REFERENCES fd_social_group(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES fd_user(id) ON DELETE CASCADE,
+  INDEX idx_group (group_id),
+  INDEX idx_created (created_at DESC)
+) ENGINE=InnoDB;
+
