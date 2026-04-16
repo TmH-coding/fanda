@@ -97,6 +97,23 @@
             <text class="bill-value">{{ bill.memberCount }}人</text>
           </view>
 
+          <!-- 分摊模式切换 -->
+          <view class="bill-mode-row">
+            <text class="bill-label">分摊方式</text>
+            <view class="bill-mode-tabs">
+              <view
+                class="bill-mode-tab"
+                :class="{ 'bill-mode-tab--active': splitMode === 'equal' }"
+                @tap="splitMode = 'equal'"
+              ><text>人均AA</text></view>
+              <view
+                class="bill-mode-tab"
+                :class="{ 'bill-mode-tab--active': splitMode === 'custom' }"
+                @tap="splitMode = 'custom'"
+              ><text>自定义</text></view>
+            </view>
+          </view>
+
           <!-- 实际金额输入 -->
           <view class="bill-actual-row">
             <text class="bill-label">实际总价</text>
@@ -115,13 +132,36 @@
             </view>
           </view>
 
+          <!-- 自定义分摊：各人份额 -->
+          <view v-if="splitMode === 'custom'" class="bill-custom-wrap">
+            <text class="bill-label" style="margin-bottom:12rpx;display:block;">各人金额（¥）</text>
+            <view v-for="(m, i) in customSplits" :key="i" class="bill-custom-item">
+              <text class="bill-custom-name">成员 {{ i + 1 }}</text>
+              <input
+                class="bill-custom-input"
+                type="digit"
+                :value="m"
+                @input="e => customSplits[i] = Number(e.detail.value)"
+              />
+            </view>
+            <text class="bill-tip bill-custom-sum">
+              已分配 ¥{{ customSplits.reduce((s,v)=>s+v,0).toFixed(0) }}
+              / ¥{{ actualTotal || bill.totalEstimate }}
+            </text>
+          </view>
+
           <view class="bill-divider" />
           <view class="bill-row bill-total-row">
-            <text class="bill-label">人均 AA</text>
+            <text class="bill-label">{{ splitMode === 'equal' ? '人均 AA' : '分摊结果' }}</text>
             <text class="bill-value bill-total">¥{{ aaPerPerson }}</text>
           </view>
           <text v-if="actualTotal" class="bill-tip">基于实际总价 ¥{{ actualTotal }} 计算</text>
           <text v-else class="bill-tip">* 输入实际总价后点击「计算」得出人均</text>
+
+          <!-- 复制小票 -->
+          <view class="bill-copy-btn" @tap="copyBillReceipt">
+            <text>📋 复制结账小票</text>
+          </view>
         </view>
         <view v-else class="bill-loading">
           <text class="fd-text-secondary">计算中...</text>
@@ -224,8 +264,10 @@ const props = defineProps({ groupId: { type: [String, Number], default: null } }
 
 const group = ref(null)
 const bill = ref(null)
-const actualTotal = ref('')       // 用户输入的实际总价
-const aaPerPerson = ref('--')     // 计算出的人均
+const actualTotal = ref('')
+const aaPerPerson = ref('--')
+const splitMode = ref('equal')          // 'equal' | 'custom'
+const customSplits = ref([])            // 自定义各人份额
 const joining = ref(false)
 const hasVoted = ref(false)
 const votedCandidateId = ref(null)
@@ -291,8 +333,9 @@ async function loadGroup() {
 async function loadBill() {
   try {
     bill.value = await get(`/api/social/groups/${groupId.value}/bill`)
-    // 初始化人均为预估值
     aaPerPerson.value = bill.value.perPerson
+    // 初始化自定义分摊（默认人均）
+    customSplits.value = Array(bill.value.memberCount).fill(bill.value.perPerson)
   } catch (e) {
     console.warn('[Bill] 加载AA账单失败', e)
   }
@@ -308,9 +351,36 @@ function calcAA() {
     uni.showToast({ title: '请输入有效金额', icon: 'none' })
     return
   }
-  const per = Math.ceil(total / bill.value.memberCount)
-  aaPerPerson.value = per
-  uni.showToast({ title: `人均 ¥${per}`, icon: 'none' })
+  const count = bill.value.memberCount
+  if (splitMode.value === 'equal') {
+    const per = Math.ceil(total / count)
+    aaPerPerson.value = per
+    customSplits.value = Array(count).fill(per)
+    uni.showToast({ title: `人均 ¥${per}`, icon: 'none' })
+  } else {
+    // 自定义模式：均匀分配作为起点
+    const base = Math.floor(total / count)
+    const remainder = total - base * count
+    customSplits.value = Array(count).fill(base).map((v, i) => i === 0 ? v + remainder : v)
+    aaPerPerson.value = `${base}~${base + remainder}`
+    uni.showToast({ title: '已均匀分配，可手动调整', icon: 'none' })
+  }
+}
+
+function copyBillReceipt() {
+  if (!bill.value) return
+  const total = actualTotal.value || bill.value.totalEstimate
+  const count = bill.value.memberCount
+  let text = `【饭搭 AA 小票】\n餐厅：${bill.value.winner}\n人数：${count}人\n总价：¥${total}\n`
+  if (splitMode.value === 'equal') {
+    text += `人均：¥${aaPerPerson.value}`
+  } else {
+    text += customSplits.value.map((v, i) => `成员${i + 1}：¥${v}`).join('\n')
+  }
+  uni.setClipboardData({
+    data: text,
+    success: () => uni.showToast({ title: '小票已复制', icon: 'success' }),
+  })
 }
 
 async function joinGroup() {
@@ -549,6 +619,69 @@ onUnmounted(() => {
   font-size: $fd-font-sm;
   font-weight: 600;
   &:active { opacity: 0.85; }
+}
+.bill-mode-row {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+}
+.bill-mode-tabs {
+  display: flex;
+  gap: $fd-space-xs;
+}
+.bill-mode-tab {
+  padding: 8rpx 24rpx;
+  border-radius: $fd-radius-round;
+  font-size: $fd-font-xs;
+  border: 2rpx solid $fd-border;
+  color: $fd-text-secondary;
+  &--active {
+    background: $fd-primary;
+    color: #fff;
+    border-color: $fd-primary;
+  }
+}
+.bill-custom-wrap {
+  background: $fd-bg;
+  border-radius: $fd-radius-sm;
+  padding: $fd-space-sm;
+}
+.bill-custom-item {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+  padding: 8rpx 0;
+  border-bottom: 2rpx solid $fd-border;
+  &:last-child { border-bottom: none; }
+}
+.bill-custom-name {
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  width: 100rpx;
+  flex-shrink: 0;
+}
+.bill-custom-input {
+  flex: 1;
+  font-size: $fd-font-base;
+  font-weight: 600;
+  color: $fd-text;
+  text-align: right;
+}
+.bill-custom-sum {
+  display: block;
+  text-align: right;
+  margin-top: $fd-space-xs;
+}
+.bill-copy-btn {
+  background: rgba($fd-primary, 0.08);
+  border: 2rpx dashed rgba($fd-primary, 0.3);
+  border-radius: $fd-radius-sm;
+  padding: 20rpx;
+  text-align: center;
+  font-size: $fd-font-sm;
+  color: $fd-primary;
+  margin-top: $fd-space-xs;
+  &:active { opacity: 0.8; }
 }
 
 /* 评价 */

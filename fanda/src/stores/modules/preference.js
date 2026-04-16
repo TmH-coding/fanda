@@ -11,6 +11,7 @@ const defaultPreference = {
   allergies: [],
   dislike: [],
   favorites: [],
+  blacklist: [],
 }
 
 export const usePreferenceStore = defineStore('preference', {
@@ -25,6 +26,12 @@ export const usePreferenceStore = defineStore('preference', {
     },
     favoriteCount(state) {
       return (state.preference.favorites || []).length
+    },
+    blacklistIds(state) {
+      return state.preference.blacklist || []
+    },
+    blacklistCount(state) {
+      return (state.preference.blacklist || []).length
     },
   },
 
@@ -95,6 +102,36 @@ export const usePreferenceStore = defineStore('preference', {
     },
     isFavorite(foodId) {
       return (this.preference.favorites || []).includes(foodId)
+    },
+    async toggleBlacklist(foodId) {
+      if (config.dataMode === 'remote') {
+        try {
+          const data = await post(`/api/preferences/blacklist/${foodId}`)
+          const list = this.preference.blacklist || []
+          if (data.blacklisted) {
+            if (!list.includes(foodId)) list.push(foodId)
+          } else {
+            const idx = list.indexOf(foodId)
+            if (idx >= 0) list.splice(idx, 1)
+          }
+          this.preference.blacklist = list
+        } catch (e) {
+          console.error('切换黑名单失败', e)
+        }
+      } else {
+        const list = this.preference.blacklist || []
+        const idx = list.indexOf(foodId)
+        if (idx >= 0) {
+          list.splice(idx, 1)
+        } else {
+          list.push(foodId)
+        }
+        this.preference.blacklist = list
+        this.save()
+      }
+    },
+    isBlacklisted(foodId) {
+      return (this.preference.blacklist || []).includes(foodId)
     },
   },
 })

@@ -67,17 +67,52 @@
 
     <!-- 成就徽章 -->
     <view class="section fd-card">
-      <text class="section-title">🏆 成就徽章</text>
+      <view class="section-header">
+        <text class="section-title">🏆 成就徽章</text>
+        <text class="section-sub">{{ achievementStore.progress }}</text>
+      </view>
+
+      <!-- 分类 tab -->
+      <scroll-view scroll-x class="ach-tabs">
+        <view
+          v-for="cat in achievementCategories"
+          :key="cat.key"
+          class="ach-tab"
+          :class="{ 'ach-tab--active': achTab === cat.key }"
+          @tap="achTab = cat.key"
+        >
+          <text>{{ cat.icon }} {{ cat.label }}</text>
+        </view>
+      </scroll-view>
+
+      <!-- 徽章网格 -->
       <view class="badges">
         <view
-          v-for="ach in achievementStore.allAchievements"
+          v-for="ach in filteredAchievements"
           :key="ach.id"
           class="badge"
-          :class="{ 'badge--locked': !achievementStore.isUnlocked(ach.id) }"
+          :class="{
+            'badge--locked': !achievementStore.isUnlocked(ach.id),
+            'badge--secret': ach.secret && !achievementStore.isUnlocked(ach.id),
+          }"
+          @tap="showAchDetail(ach)"
         >
-          <text class="badge-icon">{{ achievementStore.isUnlocked(ach.id) ? ach.icon : '🔒' }}</text>
-          <text class="badge-name">{{ ach.name }}</text>
-          <text class="badge-desc">{{ ach.description }}</text>
+          <text class="badge-icon">
+            {{ (ach.secret && !achievementStore.isUnlocked(ach.id)) ? '❓' : (achievementStore.isUnlocked(ach.id) ? ach.icon : '🔒') }}
+          </text>
+          <text class="badge-name">
+            {{ (ach.secret && !achievementStore.isUnlocked(ach.id)) ? '???' : ach.name }}
+          </text>
+          <!-- 进度条 -->
+          <view v-if="!achievementStore.isUnlocked(ach.id) && !ach.secret" class="badge-progress-wrap">
+            <view
+              class="badge-progress-bar"
+              :style="{ width: (ach.progress(achStats) / ach.maxProgress * 100) + '%' }"
+            />
+          </view>
+          <text v-if="!achievementStore.isUnlocked(ach.id) && !ach.secret" class="badge-progress-text">
+            {{ ach.progress(achStats) }}/{{ ach.maxProgress }}
+          </text>
         </view>
       </view>
     </view>
@@ -93,6 +128,24 @@
         <text class="fav-price">¥{{ food.priceRange[0] }}-{{ food.priceRange[1] }}</text>
         <view class="fav-remove" @tap="prefStore.toggleFavorite(food.id)">
           <text>取消</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 黑名单 -->
+    <view class="section fd-card">
+      <view class="section-header">
+        <text class="section-title">🚫 不想吃列表</text>
+        <text class="section-sub">永久从推荐中排除</text>
+      </view>
+      <view v-if="blacklistItems.length === 0">
+        <fd-empty icon="🚫" text="黑名单为空，推荐不受限制" />
+      </view>
+      <view v-for="food in blacklistItems" :key="food.id" class="fav-item">
+        <text class="fav-name blacklist-name">{{ food.name }}</text>
+        <text class="fav-price">{{ food.category }}</text>
+        <view class="fav-remove fav-restore" @tap="prefStore.toggleBlacklist(food.id)">
+          <text>移除</text>
         </view>
       </view>
     </view>
@@ -127,7 +180,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRecordStore } from '@/stores/modules/record'
 import { usePreferenceStore } from '@/stores/modules/preference'
 import { useAchievementStore } from '@/stores/modules/achievement'
@@ -135,6 +188,7 @@ import { useFoodStore } from '@/stores/modules/food'
 import { spicyLevels } from '@/config/theme'
 import { storage } from '@/utils/storage'
 import config from '@/config'
+import { ACHIEVEMENT_CATEGORIES } from '@/data/achievements'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
 
@@ -144,6 +198,42 @@ const achievementStore = useAchievementStore()
 const foodStore = useFoodStore()
 
 const isRemoteMode = computed(() => config.dataMode === 'remote')
+
+// 成就分类 tab
+const achTab = ref('streak')
+const achievementCategories = ACHIEVEMENT_CATEGORIES
+
+const filteredAchievements = computed(() => {
+  return achievementStore.allAchievements.filter(a => a.category === achTab.value)
+})
+
+// 传给成就 progress() 的统计数据
+const achStats = computed(() => ({
+  totalRecords:   recordStore.totalRecords,
+  streak:         recordStore.streak,
+  uniqueFoods:    recordStore.uniqueFoodCount,
+  favorites:      prefStore.favoriteCount,
+  breakfastCount: recordStore.breakfastCount,
+  blacklistCount: prefStore.blacklistCount,
+  socialJoined:   0,
+  socialCreated:  0,
+  friendCount:    0,
+  budgetWeekStreak: 0,
+  budgetMonthOk:  0,
+  lateNightCount: 0,
+  vegStreak:      0,
+}))
+
+function showAchDetail(ach) {
+  const unlocked = achievementStore.isUnlocked(ach.id)
+  const isSecret = ach.secret && !unlocked
+  uni.showModal({
+    title: isSecret ? '神秘成就' : ach.name,
+    content: isSecret ? '完成某个特殊条件后解锁' : `${ach.description}${unlocked ? '\n\n✅ 已解锁！' : `\n\n进度：${ach.progress(achStats.value)}/${ach.maxProgress}`}`,
+    showCancel: false,
+    confirmText: '知道了',
+  })
+}
 
 const userAvatar = computed(() => {
   if (isRemoteMode.value) {
@@ -204,6 +294,11 @@ const favoriteItems = computed(() => {
   return foodStore.foods.filter((f) => favIds.includes(f.id))
 })
 
+const blacklistItems = computed(() => {
+  const ids = prefStore.blacklistIds
+  return foodStore.foods.filter((f) => ids.includes(f.id))
+})
+
 function setSpicy(level) {
   prefStore.update({ spicyLevel: level })
 }
@@ -241,15 +336,7 @@ onMounted(async () => {
   achievementStore.load()
 
   // 检查成就
-  achievementStore.check({
-    totalRecords: recordStore.totalRecords,
-    streak: recordStore.streak,
-    uniqueFoods: recordStore.uniqueFoodCount,
-    favorites: prefStore.favoriteCount,
-    breakfastCount: recordStore.breakfastCount,
-    budgetWeekStreak: 0,
-    socialJoined: 0,
-  })
+  achievementStore.check(achStats.value)
 })
 </script>
 
@@ -309,10 +396,61 @@ onMounted(async () => {
   margin-top: 4rpx;
 }
 
-.section { margin-bottom: 0; }
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $fd-space-base;
+}
+.section-sub {
+  font-size: $fd-font-xs;
+  color: $fd-text-light;
+}
+
+.ach-tabs {
+  display: flex;
+  white-space: nowrap;
+  margin-bottom: $fd-space-base;
+}
+.ach-tab {
+  display: inline-flex;
+  padding: 8rpx 24rpx;
+  border-radius: $fd-radius-round;
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+  background: $fd-bg;
+  margin-right: $fd-space-xs;
+  flex-shrink: 0;
+  &--active {
+    background: $fd-primary;
+    color: #fff;
+  }
+}
+
+.badge-progress-wrap {
+  width: 100%;
+  height: 8rpx;
+  background: $fd-border;
+  border-radius: $fd-radius-round;
+  overflow: hidden;
+  margin-top: 6rpx;
+}
+.badge-progress-bar {
+  height: 100%;
+  background: $fd-primary;
+  border-radius: $fd-radius-round;
+  transition: width 0.4s ease;
+}
+.badge-progress-text {
+  font-size: 18rpx;
+  color: $fd-text-light;
+  margin-top: 2rpx;
+}
+.badge-desc { display: none; }
+.badge--secret { background: rgba(#888, 0.08); }
+
 .section-title {
   @include fd-title;
-  margin-bottom: $fd-space-base;
   display: block;
 }
 
@@ -410,6 +548,8 @@ onMounted(async () => {
   color: $fd-danger;
   &:active { opacity: 0.7; }
 }
+.fav-restore { color: $fd-accent; }
+.blacklist-name { text-decoration: line-through; color: $fd-text-secondary; }
 
 .logout-btn {
   text-align: center;

@@ -125,6 +125,85 @@
       </view>
     </block>
 
+    <!-- 月度对比 -->
+    <block v-if="activeTab === 'compare'">
+      <view v-if="compareStats" class="section fd-card">
+        <!-- 消费对比 -->
+        <text class="chart-title">💰 消费对比</text>
+        <view class="compare-row">
+          <view class="compare-col">
+            <text class="compare-month-label">上月</text>
+            <text class="compare-amount compare-amount--secondary">¥{{ compareStats.prev.total }}</text>
+          </view>
+          <view class="compare-arrow-col">
+            <text
+              class="compare-delta"
+              :class="compareDeltaClass(compareStats.curr.total, compareStats.prev.total)"
+            >
+              {{ compareDeltaText(compareStats.curr.total, compareStats.prev.total) }}
+            </text>
+          </view>
+          <view class="compare-col compare-col--right">
+            <text class="compare-month-label">本月</text>
+            <text class="compare-amount fd-text-primary">¥{{ compareStats.curr.total }}</text>
+          </view>
+        </view>
+
+        <!-- 日均对比 -->
+        <view class="compare-detail-row">
+          <view class="compare-detail-item">
+            <text class="compare-detail-label">日均消费</text>
+            <text class="compare-detail-prev">¥{{ compareStats.prev.avgPerDay }}</text>
+            <text class="compare-detail-arrow">→</text>
+            <text class="compare-detail-curr fd-text-primary">¥{{ compareStats.curr.avgPerDay }}</text>
+          </view>
+          <view class="compare-detail-item">
+            <text class="compare-detail-label">消费天数</text>
+            <text class="compare-detail-prev">{{ compareStats.prev.activeDays }}天</text>
+            <text class="compare-detail-arrow">→</text>
+            <text class="compare-detail-curr fd-text-primary">{{ compareStats.curr.activeDays }}天</text>
+          </view>
+        </view>
+      </view>
+
+      <view v-if="compareStats && compareNutrition" class="section fd-card">
+        <!-- 营养对比 -->
+        <text class="chart-title">🥦 营养摄入对比</text>
+        <view class="nutrition-compare-list">
+          <view
+            v-for="(vals, type) in compareNutrition"
+            :key="type"
+            class="nutrition-compare-item"
+          >
+            <view class="nutrition-info">
+              <text class="nutrition-dot" :style="{ background: nutritionColor(type) }"></text>
+              <text class="nutrition-name">{{ nutritionLabel(type) }}</text>
+            </view>
+            <view class="nutrition-compare-bars">
+              <view class="nutrition-compare-bar-wrap">
+                <text class="nutrition-compare-sub">上月</text>
+                <view class="nutrition-bar-bg">
+                  <view class="nutrition-bar" :style="{ width: vals.prevPct + '%', background: '#ccc' }" />
+                </view>
+                <text class="nutrition-count">{{ vals.prev }}次</text>
+              </view>
+              <view class="nutrition-compare-bar-wrap">
+                <text class="nutrition-compare-sub">本月</text>
+                <view class="nutrition-bar-bg">
+                  <view class="nutrition-bar" :style="{ width: vals.currPct + '%', background: nutritionColor(type) }" />
+                </view>
+                <text class="nutrition-count">{{ vals.curr }}次</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view v-if="!compareStats" class="loading-card fd-card">
+        <text class="fd-text-secondary">{{ loading ? '加载中...' : '暂无对比数据' }}</text>
+      </view>
+    </block>
+
     <!-- 用餐习惯 -->
     <block v-if="activeTab === 'habit'">
       <view v-if="habitStats">
@@ -188,14 +267,15 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { get } from '@/utils/http'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 
 const tabs = [
-  { key: 'expense', label: '消费趋势' },
+  { key: 'expense',  label: '消费趋势' },
   { key: 'nutrition', label: '营养摄入' },
-  { key: 'habit', label: '用餐习惯' },
+  { key: 'habit',    label: '用餐习惯' },
+  { key: 'compare',  label: '月度对比' },
 ]
 const activeTab = ref('expense')
 
@@ -207,6 +287,8 @@ const loading = ref(false)
 const expenseStats = ref(null)
 const nutritionStats = ref(null)
 const habitStats = ref(null)
+const compareStats = ref(null)
+const compareNutritionRaw = ref(null)
 
 function changeMonth(delta) {
   let m = month.value + delta
@@ -220,14 +302,26 @@ function changeMonth(delta) {
 async function loadStats() {
   loading.value = true
   try {
-    const [exp, nut, hab] = await Promise.all([
+    const prevMonth = month.value === 1 ? 12 : month.value - 1
+    const prevYear  = month.value === 1 ? year.value - 1 : year.value
+
+    const [exp, nut, hab, prevExp, prevNut] = await Promise.all([
       get(`/api/stats/expense?year=${year.value}&month=${month.value}`),
       get(`/api/stats/nutrition?year=${year.value}&month=${month.value}`),
       get('/api/stats/habit'),
+      get(`/api/stats/expense?year=${prevYear}&month=${prevMonth}`),
+      get(`/api/stats/nutrition?year=${prevYear}&month=${prevMonth}`),
     ])
     expenseStats.value = exp
     nutritionStats.value = nut
     habitStats.value = hab
+
+    if (exp && prevExp) {
+      compareStats.value = { curr: exp, prev: prevExp }
+    } else {
+      compareStats.value = null
+    }
+    compareNutritionRaw.value = (nut && prevNut) ? { curr: nut, prev: prevNut } : null
   } catch (e) {
     console.error('加载统计失败', e)
   } finally {
@@ -271,6 +365,51 @@ const NUTRITION_COLORS = {
 }
 function nutritionLabel(type) { return NUTRITION_LABELS[type] || type }
 function nutritionColor(type) { return NUTRITION_COLORS[type] || '#B2BEC3' }
+
+// ---- 月度对比辅助 ----
+const compareNutrition = computed(() => {
+  const raw = compareNutritionRaw.value
+  if (!raw) return null
+  const allTypes = new Set([
+    ...Object.keys(raw.curr.nutritionCount || {}),
+    ...Object.keys(raw.prev.nutritionCount || {}),
+  ])
+  const maxVal = Math.max(
+    ...Object.values(raw.curr.nutritionCount || {}).map(Number),
+    ...Object.values(raw.prev.nutritionCount || {}).map(Number),
+    1,
+  )
+  const result = {}
+  for (const t of allTypes) {
+    const curr = Number((raw.curr.nutritionCount || {})[t] || 0)
+    const prev = Number((raw.prev.nutritionCount || {})[t] || 0)
+    result[t] = {
+      curr,
+      prev,
+      currPct: Math.round((curr / maxVal) * 100),
+      prevPct: Math.round((prev / maxVal) * 100),
+    }
+  }
+  return result
+})
+
+function compareDeltaText(curr, prev) {
+  const c = Number(curr) || 0
+  const p = Number(prev) || 0
+  if (p === 0) return c > 0 ? '↑ 新增' : '-'
+  const pct = Math.round(((c - p) / p) * 100)
+  if (pct > 0) return `↑ ${pct}%`
+  if (pct < 0) return `↓ ${Math.abs(pct)}%`
+  return '持平'
+}
+
+function compareDeltaClass(curr, prev) {
+  const c = Number(curr) || 0
+  const p = Number(prev) || 0
+  if (c > p) return 'compare-delta--up'
+  if (c < p) return 'compare-delta--down'
+  return 'compare-delta--flat'
+}
 </script>
 
 <style lang="scss" scoped>
@@ -448,4 +587,59 @@ function nutritionColor(type) { return NUTRITION_COLORS[type] || '#B2BEC3' }
 }
 .top-food-name { flex: 1; font-size: $fd-font-base; color: $fd-text; }
 .top-food-count { font-size: $fd-font-sm; color: $fd-text-secondary; }
+
+/* 月度对比 */
+.compare-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32rpx;
+}
+.compare-col {
+  text-align: center;
+  flex: 1;
+  &--right { text-align: right; }
+}
+.compare-month-label { display: block; font-size: $fd-font-xs; color: $fd-text-secondary; margin-bottom: 8rpx; }
+.compare-amount {
+  display: block;
+  font-size: $fd-font-xl;
+  font-weight: 700;
+  &--secondary { color: $fd-text-secondary; }
+}
+.compare-arrow-col { text-align: center; padding: 0 16rpx; }
+.compare-delta {
+  display: block;
+  font-size: $fd-font-sm;
+  font-weight: 600;
+  padding: 8rpx 16rpx;
+  border-radius: $fd-radius-round;
+  &--up { color: $fd-danger; background: rgba($fd-danger, 0.1); }
+  &--down { color: $fd-accent; background: rgba($fd-accent, 0.1); }
+  &--flat { color: $fd-text-secondary; background: $fd-border; }
+}
+.compare-detail-row {
+  display: flex;
+  gap: 24rpx;
+  border-top: 2rpx solid $fd-border;
+  padding-top: 24rpx;
+}
+.compare-detail-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+}
+.compare-detail-label { font-size: $fd-font-xs; color: $fd-text-secondary; }
+.compare-detail-prev { font-size: $fd-font-sm; color: $fd-text-secondary; }
+.compare-detail-arrow { font-size: $fd-font-xs; color: $fd-text-light; }
+.compare-detail-curr { font-size: $fd-font-sm; font-weight: 700; }
+
+.nutrition-compare-list { display: flex; flex-direction: column; gap: 24rpx; }
+.nutrition-compare-item { display: flex; align-items: flex-start; gap: 16rpx; }
+.nutrition-compare-bars { flex: 1; display: flex; flex-direction: column; gap: 8rpx; }
+.nutrition-compare-bar-wrap { display: flex; align-items: center; gap: 12rpx; }
+.nutrition-compare-sub { font-size: 20rpx; color: $fd-text-secondary; width: 50rpx; flex-shrink: 0; }
+
 </style>

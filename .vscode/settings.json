@@ -1,3 +1,5 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx1G -Xms100m -javaagent:\"C:/Users/sdbj/.m2/repository/org/projectlombok/lombok/1.18.42/lombok-1.18.42.jar\"",
+    "java.compile.nullAnalysis.mode": "disabled"
 }

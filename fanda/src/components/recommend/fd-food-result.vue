@@ -45,8 +45,13 @@
         </view>
       </view>
 
-      <view class="result__favorite" @tap="$emit('toggleFavorite', food.id)">
-        <text>{{ isFavorite ? '❤️ 已收藏' : '🤍 收藏' }}</text>
+      <view class="result__quick-actions">
+        <view class="result__favorite" @tap="$emit('toggleFavorite', food.id)">
+          <text>{{ isFavorite ? '❤️ 已收藏' : '🤍 收藏' }}</text>
+        </view>
+        <view class="result__blacklist" @tap="onBlacklist">
+          <text>🚫 不想吃</text>
+        </view>
       </view>
     </view>
   </view>
@@ -61,7 +66,7 @@ const props = defineProps({
   reason: { type: String, default: '' },
 })
 
-const emit = defineEmits(['confirm', 'reroll', 'toggleFavorite'])
+const emit = defineEmits(['confirm', 'reroll', 'toggleFavorite', 'blacklist'])
 
 const costInput = ref('')
 
@@ -78,6 +83,18 @@ function onConfirm() {
   const cost = costInput.value ? Number(costInput.value) : defaultCost.value
   emit('confirm', cost)
   costInput.value = ''
+}
+
+function onBlacklist() {
+  uni.showModal({
+    title: '不想吃这个？',
+    content: `将"${props.food.name}"加入黑名单后，不会再被推荐`,
+    confirmText: '确认',
+    cancelText: '算了',
+    success(res) {
+      if (res.confirm) emit('blacklist', props.food.id)
+    },
+  })
 }
 </script>
 
@@ -192,9 +209,19 @@ function onConfirm() {
     }
   }
 
-  &__favorite {
+  &__quick-actions {
+    display: flex;
+    gap: $fd-space-lg;
     margin-top: $fd-space-base;
+    align-items: center;
+  }
+  &__favorite {
     font-size: $fd-font-sm;
+    &:active { opacity: 0.7; }
+  }
+  &__blacklist {
+    font-size: $fd-font-sm;
+    color: $fd-text-secondary;
     &:active { opacity: 0.7; }
   }
 }

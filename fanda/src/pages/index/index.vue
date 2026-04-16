@@ -76,6 +76,7 @@
       @confirm="onConfirm"
       @reroll="onReroll"
       @toggle-favorite="onToggleFav"
+      @blacklist="onBlacklist"
     />
 
     <!-- 排除标签 -->
@@ -179,6 +180,12 @@ function onReroll() {
 
 function onToggleFav(foodId) {
   prefStore.toggleFavorite(foodId)
+}
+
+function onBlacklist(foodId) {
+  prefStore.toggleBlacklist(foodId)
+  reroll()
+  uni.showToast({ title: '已加入黑名单，换一个！', icon: 'none' })
 }
 
 onMounted(async () => {

@@ -214,3 +214,15 @@ CREATE TABLE IF NOT EXISTS fd_achievement_unlock (
   FOREIGN KEY (user_id) REFERENCES fd_user(id) ON DELETE CASCADE,
   UNIQUE INDEX idx_user_ach (user_id, achievement_id)
 ) ENGINE=InnoDB;
+
+-- 菜品黑名单（永久不推荐）
+CREATE TABLE IF NOT EXISTS fd_user_blacklist_food (
+  id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id    BIGINT   NOT NULL,
+  food_id    BIGINT   NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES fd_user(id) ON DELETE CASCADE,
+  FOREIGN KEY (food_id) REFERENCES fd_food_item(id) ON DELETE CASCADE,
+  UNIQUE INDEX idx_user_food (user_id, food_id)
+) ENGINE=InnoDB;
+

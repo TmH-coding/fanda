@@ -30,6 +30,7 @@ public class PreferenceController {
     private final UserAllergyMapper userAllergyMapper;
     private final UserDislikeMapper userDislikeMapper;
     private final UserFavoriteFoodMapper userFavoriteFoodMapper;
+    private final UserBlacklistFoodMapper userBlacklistFoodMapper;
     private final UserMapper userMapper;
 
     @GetMapping
@@ -56,12 +57,17 @@ public class PreferenceController {
                 new LambdaQueryWrapper<UserFavoriteFood>().eq(UserFavoriteFood::getUserId, userId))
                 .stream().map(UserFavoriteFood::getFoodId).collect(Collectors.toList());
 
+        List<Long> blacklist = userBlacklistFoodMapper.selectList(
+                new LambdaQueryWrapper<UserBlacklistFood>().eq(UserBlacklistFood::getUserId, userId))
+                .stream().map(UserBlacklistFood::getFoodId).collect(Collectors.toList());
+
         Map<String, Object> result = new HashMap<>();
         result.put("spicyLevel", pref != null ? pref.getSpicyLevel() : 0);
         result.put("favCategories", favCategories);
         result.put("allergies", allergies);
         result.put("dislike", dislike);
         result.put("favorites", favorites);
+        result.put("blacklist", blacklist);
 
         return ApiResponse.ok(result);
     }
@@ -151,6 +157,35 @@ public class PreferenceController {
 
         Map<String, Object> result = new HashMap<>();
         result.put("favorited", !exists);
+        return ApiResponse.ok(result);
+    }
+
+    @PostMapping("/blacklist/{foodId}")
+    @Transactional
+    public ApiResponse<Map<String, Object>> toggleBlacklist(
+            @PathVariable Long foodId,
+            Authentication authentication) {
+
+        Long userId = getCurrentUserId(authentication);
+
+        Long count = userBlacklistFoodMapper.selectCount(new LambdaQueryWrapper<UserBlacklistFood>()
+                .eq(UserBlacklistFood::getUserId, userId)
+                .eq(UserBlacklistFood::getFoodId, foodId));
+        boolean exists = count > 0;
+
+        if (exists) {
+            userBlacklistFoodMapper.delete(new LambdaQueryWrapper<UserBlacklistFood>()
+                    .eq(UserBlacklistFood::getUserId, userId)
+                    .eq(UserBlacklistFood::getFoodId, foodId));
+        } else {
+            UserBlacklistFood bl = new UserBlacklistFood();
+            bl.setUserId(userId);
+            bl.setFoodId(foodId);
+            userBlacklistFoodMapper.insert(bl);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("blacklisted", !exists);
         return ApiResponse.ok(result);
     }
 
