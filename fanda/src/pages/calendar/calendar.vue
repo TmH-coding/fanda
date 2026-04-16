@@ -16,9 +16,19 @@
 
     <!-- 日历网格 -->
     <view class="calendar-grid">
-      <view v-for="(day, i) in calendarDays" :key="i" class="day-cell" :class="{ 'day-cell--today': day.isToday, 'day-cell--empty': !day.date }" @tap="day.date && selectDay(day.date)">
+      <view
+        v-for="(day, i) in calendarDays"
+        :key="i"
+        class="day-cell"
+        :class="{
+          'day-cell--today': day.isToday,
+          'day-cell--empty': !day.date,
+          'day-cell--selected': day.date === selectedDate,
+        }"
+        @tap="day.date && selectDay(day.date)"
+      >
         <text v-if="day.date" class="day-num">{{ day.day }}</text>
-        <view v-if="day.hasRecord" class="day-dot"></view>
+        <view v-if="day.recordCount > 0" class="day-dot" :class="'day-dot--' + Math.min(day.recordCount, 3)"></view>
       </view>
     </view>
 
@@ -41,6 +51,20 @@
         <text class="record-food">{{ record.foodName }}</text>
         <view v-if="record.nutrition" class="record-tags">
           <text v-for="n in record.nutrition" :key="n" class="fd-tag--accent">{{ nutritionLabel(n) }}</text>
+        </view>
+        <!-- 星级评价 -->
+        <view class="record-rating">
+          <text class="record-rating-label">评价</text>
+          <view class="stars">
+            <text
+              v-for="s in 5"
+              :key="s"
+              class="star"
+              :class="{ 'star--active': s <= (record.rating || 0) }"
+              @tap="rateRecord(record.id, s)"
+            >★</text>
+          </view>
+          <text v-if="record.rating" class="rating-text">{{ ratingText(record.rating) }}</text>
         </view>
       </view>
     </view>
@@ -72,18 +96,18 @@ const calendarDays = computed(() => {
   const result = []
 
   for (let i = 0; i < firstDay; i++) {
-    result.push({ date: null, day: '', isToday: false, hasRecord: false })
+    result.push({ date: null, day: '', isToday: false, recordCount: 0 })
   }
 
   const monthStr = String(month.value).padStart(2, '0')
   for (let d = 1; d <= days; d++) {
     const dateStr = `${year.value}-${monthStr}-${String(d).padStart(2, '0')}`
-    const hasRecord = recordStore.getByDate(dateStr).length > 0
+    const recordCount = recordStore.getByDate(dateStr).length
     result.push({
       date: dateStr,
       day: d,
       isToday: dateStr === todayStr,
-      hasRecord,
+      recordCount,
     })
   }
   return result
@@ -101,6 +125,14 @@ function nutritionLabel(key) {
 }
 
 function selectDay(date) { selectedDate.value = date }
+
+async function rateRecord(id, score) {
+  await recordStore.rate(id, score)
+  uni.showToast({ title: ratingText(score), icon: 'none', duration: 1000 })
+}
+
+const RATING_TEXTS = ['', '难吃', '一般', '还不错', '很好吃', '超级棒！']
+function ratingText(score) { return RATING_TEXTS[score] || '' }
 
 async function deleteRecord(id) {
   uni.showModal({
@@ -190,6 +222,16 @@ onMounted(async () => {
       text-align: center;
     }
   }
+  &--selected:not(&--today) {
+    .day-num {
+      background: rgba($fd-primary, 0.12);
+      border-radius: 50%;
+      width: 56rpx;
+      height: 56rpx;
+      line-height: 56rpx;
+      text-align: center;
+    }
+  }
 }
 .day-num {
   font-size: $fd-font-base;
@@ -199,8 +241,11 @@ onMounted(async () => {
   width: 12rpx;
   height: 12rpx;
   border-radius: 50%;
-  background: $fd-primary;
+  background: rgba($fd-primary, 0.3);
   margin-top: 4rpx;
+  &--1 { background: rgba($fd-primary, 0.4); }
+  &--2 { background: rgba($fd-primary, 0.7); }
+  &--3 { background: $fd-primary; width: 16rpx; height: 16rpx; }
 }
 
 .records-section {
@@ -251,5 +296,31 @@ onMounted(async () => {
 .record-tags {
   display: flex;
   gap: $fd-space-xs;
+}
+
+/* 星级评价 */
+.record-rating {
+  display: flex;
+  align-items: center;
+  gap: $fd-space-sm;
+  margin-top: $fd-space-xs;
+  padding-top: $fd-space-xs;
+  border-top: 2rpx solid $fd-border;
+}
+.record-rating-label {
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+  flex-shrink: 0;
+}
+.stars { display: flex; gap: 4rpx; }
+.star {
+  font-size: 36rpx;
+  color: $fd-border;
+  &--active { color: #FFB800; }
+  &:active { opacity: 0.7; }
+}
+.rating-text {
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
 }
 </style>

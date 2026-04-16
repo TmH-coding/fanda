@@ -38,6 +38,32 @@
       <text>⚠️ 本月预算已超支！请注意控制消费哦~</text>
     </view>
 
+    <!-- 智能预警卡片（未超支时展示） -->
+    <view v-else class="smart-card fd-card">
+      <!-- 今日额度 -->
+      <view class="smart-row">
+        <view class="smart-item" :class="todayStatusClass">
+          <text class="smart-num">¥{{ budgetStore.dailySuggestion }}</text>
+          <text class="smart-label">今日建议上限</text>
+        </view>
+        <view class="smart-divider" />
+        <view class="smart-item">
+          <text class="smart-num">{{ daysLeft }}天</text>
+          <text class="smart-label">本月剩余天数</text>
+        </view>
+        <view class="smart-divider" />
+        <view class="smart-item" :class="trendClass">
+          <text class="smart-num">{{ trendLabel }}</text>
+          <text class="smart-label">消费趋势</text>
+        </view>
+      </view>
+
+      <!-- 趋势提示语 -->
+      <view class="smart-tip" :class="trendClass">
+        <text class="smart-tip-text">{{ trendTip }}</text>
+      </view>
+    </view>
+
     <!-- 设置预算 -->
     <view class="set-budget fd-card">
       <text class="section-title">设置预算</text>
@@ -73,11 +99,71 @@
 import { ref, computed, onMounted } from 'vue'
 import { useBudgetStore } from '@/stores/modules/budget'
 import { mealTypeLabel } from '@/utils/date'
+import dayjs from 'dayjs'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
 
 const budgetStore = useBudgetStore()
 const monthlyInput = ref('')
+
+// ─── 趋势预测 ────────────────────────────────────────
+// 按照当前已消费天数推算：如果保持这个日均速度到月末，总消费会是多少
+const daysLeft = computed(() => {
+  return dayjs().daysInMonth() - dayjs().date() + 1
+})
+
+const daysPassed = computed(() => {
+  return dayjs().date()
+})
+
+// 当前日均消费
+const actualDailyAvg = computed(() => {
+  const passed = daysPassed.value
+  if (passed === 0) return 0
+  return budgetStore.monthlyTotal / passed
+})
+
+// 预测月末总消费
+const projectedTotal = computed(() => {
+  return Math.round(actualDailyAvg.value * dayjs().daysInMonth())
+})
+
+// 超出预算百分比
+const projectedOverPct = computed(() => {
+  const budget = budgetStore.budget.monthly
+  if (budget <= 0) return 0
+  return Math.round(((projectedTotal.value - budget) / budget) * 100)
+})
+
+const trendClass = computed(() => {
+  const pct = projectedOverPct.value
+  if (pct > 20) return 'trend--danger'
+  if (pct > 0) return 'trend--warn'
+  return 'trend--ok'
+})
+
+const trendLabel = computed(() => {
+  const pct = projectedOverPct.value
+  if (pct > 20) return '超支风险'
+  if (pct > 0) return '略偏高'
+  return '良好'
+})
+
+const trendTip = computed(() => {
+  const pct = projectedOverPct.value
+  const proj = projectedTotal.value
+  const budget = budgetStore.budget.monthly
+  if (pct > 20) return `⚠️ 按当前速度月末将超支 ¥${proj - budget}，建议今天只花 ¥${budgetStore.dailySuggestion} 以内`
+  if (pct > 0) return `📈 按当前速度月末预计消费 ¥${proj}，略超预算，注意节制`
+  return `✅ 消费节奏良好，预计月末总花费约 ¥${proj}`
+})
+
+const todayStatusClass = computed(() => {
+  const today = budgetStore.monthlyExpenses
+    .filter(e => e.date === dayjs().format('YYYY-MM-DD'))
+    .reduce((s, e) => s + e.amount, 0)
+  return today > budgetStore.dailySuggestion ? 'smart-item--warn' : ''
+})
 
 const ringStyle = computed(() => {
   const pct = budgetStore.monthlyPercent
@@ -185,6 +271,42 @@ onMounted(async () => {
   font-weight: 600;
   text-align: center;
 }
+
+/* 智能预警卡片 */
+.smart-card { padding: $fd-space-base $fd-space-md; }
+.smart-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin-bottom: $fd-space-sm;
+}
+.smart-divider { width: 2rpx; height: 60rpx; background: $fd-border; }
+.smart-item {
+  text-align: center;
+  flex: 1;
+}
+.smart-num {
+  display: block;
+  font-size: $fd-font-lg;
+  font-weight: 700;
+  color: $fd-text;
+}
+.smart-label {
+  display: block;
+  font-size: $fd-font-xs;
+  color: $fd-text-secondary;
+  margin-top: 4rpx;
+}
+.smart-item--warn .smart-num { color: $fd-danger; }
+.smart-tip {
+  border-radius: $fd-radius-sm;
+  padding: 16rpx 20rpx;
+  margin-top: 4rpx;
+}
+.smart-tip-text { font-size: $fd-font-sm; line-height: 1.6; }
+.trend--ok { background: rgba($fd-accent, 0.1); .smart-tip-text { color: darken(#4ECDC4, 15%); } .smart-num { color: $fd-accent; } }
+.trend--warn { background: rgba(#FFA502, 0.1); .smart-tip-text { color: darken(#FFA502, 10%); } .smart-num { color: #FFA502; } }
+.trend--danger { background: rgba($fd-danger, 0.1); .smart-tip-text { color: $fd-danger; } .smart-num { color: $fd-danger; } }
 
 .section-title {
   @include fd-title;

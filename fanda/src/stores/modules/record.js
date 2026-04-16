@@ -82,5 +82,21 @@ export const useRecordStore = defineStore('record', {
       }
       this.records = this.records.filter((r) => r.id !== id)
     },
+    async rate(id, score) {
+      this.records = this.records.map((r) =>
+        r.id === id ? { ...r, rating: score } : r
+      )
+      const service = getService('record')
+      try {
+        // 本地模式直接更新存储，远程模式尝试 patch
+        if (service.rate) {
+          await service.rate(id, score)
+        } else {
+          await service.save(this.records.find((r) => r.id === id))
+        }
+      } catch {
+        // 评分失败静默处理，本地数据已更新
+      }
+    },
   },
 })
