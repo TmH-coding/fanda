@@ -70,6 +70,31 @@
         <text class="empty-icon">📰</text>
         <text class="empty-text">暂无好友动态，多加几个好友吧~</text>
       </view>
+
+      <!-- 本周对比卡片 -->
+      <view v-else class="week-compare fd-card">
+        <text class="week-compare__title">📊 本周 vs 上周（我的消费）</text>
+        <view class="week-compare__row">
+          <view class="week-compare__item">
+            <text class="week-compare__num">¥{{ myThisWeek }}</text>
+            <text class="week-compare__label">本周花费</text>
+          </view>
+          <view class="week-compare__divider" />
+          <view class="week-compare__item">
+            <text class="week-compare__num">¥{{ myLastWeek }}</text>
+            <text class="week-compare__label">上周花费</text>
+          </view>
+          <view class="week-compare__divider" />
+          <view class="week-compare__item">
+            <text class="week-compare__num" :class="weekDiffClass">{{ weekDiffLabel }}</text>
+            <text class="week-compare__label">变化</text>
+          </view>
+        </view>
+        <view class="week-compare__tip" v-if="weekCompareItems.length">
+          <text class="week-compare__tip-text">好友本周最爱：{{ weekCompareItems.slice(0,3).map(i=>i.foodName).join('、') }}</text>
+        </view>
+      </view>
+
       <view v-for="item in feedItems" :key="item.id" class="feed-card fd-card">
         <view class="feed-header">
           <view class="user-avatar feed-avatar">
@@ -147,9 +172,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { get, post, del } from '@/utils/http'
 import { mealTypeLabel } from '@/utils/date'
+import { useRecordStore } from '@/stores/modules/record'
+import { useBudgetStore } from '@/stores/modules/budget'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 
 const activeTab = ref('feed')
@@ -169,6 +196,57 @@ const searchResults = ref([])
 const loading = ref(false)
 const searching = ref(false)
 const searched = ref(false)
+
+const recordStore = useRecordStore()
+const budgetStore = useBudgetStore()
+
+// ── 本周 vs 上周对比 ──────────────────────────────────
+function getWeekStart(offsetWeeks = 0) {
+  const now = new Date()
+  const day = now.getDay() || 7  // 1=Mon ... 7=Sun
+  const mon = new Date(now)
+  mon.setDate(now.getDate() - day + 1 - offsetWeeks * 7)
+  mon.setHours(0, 0, 0, 0)
+  return mon
+}
+
+function isoDate(d) {
+  return d.toISOString().slice(0, 10)
+}
+
+const myThisWeek = computed(() => {
+  const start = getWeekStart(0)
+  const end = new Date()
+  return Math.round(
+    budgetStore.monthlyExpenses
+      .filter(e => e.date >= isoDate(start) && e.date <= isoDate(end))
+      .reduce((s, e) => s + e.amount, 0)
+  )
+})
+
+const myLastWeek = computed(() => {
+  const start = getWeekStart(1)
+  const end = getWeekStart(0)
+  end.setDate(end.getDate() - 1)
+  return Math.round(
+    budgetStore.monthlyExpenses
+      .filter(e => e.date >= isoDate(start) && e.date <= isoDate(end))
+      .reduce((s, e) => s + e.amount, 0)
+  )
+})
+
+const weekDiff = computed(() => myThisWeek.value - myLastWeek.value)
+const weekDiffLabel = computed(() => {
+  const d = weekDiff.value
+  if (d === 0) return '持平'
+  return (d > 0 ? '+¥' : '-¥') + Math.abs(d)
+})
+const weekDiffClass = computed(() => weekDiff.value > 0 ? 'compare-up' : weekDiff.value < 0 ? 'compare-down' : '')
+
+const weekCompareItems = computed(() => {
+  const start = isoDate(getWeekStart(0))
+  return feedItems.value.filter(i => i.date >= start)
+})
 
 async function loadFeed() {
   feedLoading.value = true
@@ -272,6 +350,8 @@ onMounted(() => {
   loadFeed()
   loadFriends()
   loadRequests()
+  budgetStore.load()
+  recordStore.load()
 })
 </script>
 
@@ -440,6 +520,56 @@ onMounted(() => {
 .feed-card {
   margin: 0 $fd-space-md $fd-space-sm;
 }
+
+/* 本周对比卡片 */
+.week-compare {
+  margin: 0 $fd-space-md $fd-space-sm;
+  &__title {
+    font-size: $fd-font-sm;
+    font-weight: 700;
+    color: $fd-text-secondary;
+    display: block;
+    margin-bottom: $fd-space-sm;
+  }
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: $fd-space-sm 0;
+    border-top: 2rpx solid $fd-border;
+    border-bottom: 2rpx solid $fd-border;
+    margin-bottom: $fd-space-sm;
+  }
+  &__divider {
+    width: 2rpx;
+    height: 50rpx;
+    background: $fd-border;
+  }
+  &__item {
+    text-align: center;
+    flex: 1;
+  }
+  &__num {
+    display: block;
+    font-size: $fd-font-lg;
+    font-weight: 800;
+    color: $fd-primary;
+    margin-bottom: 4rpx;
+  }
+  &__label {
+    font-size: $fd-font-xs;
+    color: $fd-text-secondary;
+  }
+  &__tip {
+    padding: 8rpx 0;
+  }
+  &__tip-text {
+    font-size: $fd-font-xs;
+    color: $fd-text-secondary;
+  }
+}
+.compare-up { color: $fd-danger !important; }
+.compare-down { color: $fd-success !important; }
 .feed-header {
   display: flex;
   align-items: center;

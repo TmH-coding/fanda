@@ -90,6 +90,51 @@
     <view class="candidate-info">
       <text class="fd-text-light">当前可选菜品 {{ candidates.length }} 个</text>
     </view>
+
+    <!-- 浮动手动记录按钮 -->
+    <view class="float-record-btn" @tap="showManualRecord = true">
+      <text class="float-record-icon">✏️</text>
+      <text class="float-record-label">手动记录</text>
+    </view>
+
+    <!-- 手动记录弹窗 -->
+    <fd-modal v-model:visible="showManualRecord" title="手动记录用餐" @confirm="submitManualRecord">
+      <view class="form-item">
+        <text class="form-label">食物</text>
+        <view class="food-select-btn" @tap="showManualPicker = true">
+          <text :class="manualFood ? 'food-select-name' : 'food-select-placeholder'">
+            {{ manualFood ? manualFood.name : '点击选择食物…' }}
+          </text>
+          <text class="food-select-arrow">›</text>
+        </view>
+      </view>
+      <view class="form-item">
+        <text class="form-label">餐次</text>
+        <view class="meal-types">
+          <view
+            v-for="mt in MEAL_TYPES"
+            :key="mt.key"
+            class="meal-type-btn"
+            :class="{ 'meal-type-btn--active': manualForm.mealType === mt.key }"
+            @tap="manualForm.mealType = mt.key"
+          >
+            <text>{{ mt.label }}</text>
+          </view>
+        </view>
+      </view>
+      <view class="form-item">
+        <text class="form-label">花费（元）</text>
+        <input class="form-input" type="digit" v-model="manualForm.cost" placeholder="0" />
+      </view>
+    </fd-modal>
+
+    <!-- 食物选择器（手动记录） -->
+    <fd-food-picker
+      v-model:visible="showManualPicker"
+      v-model="manualForm.foodId"
+      :meal-time="manualForm.mealType"
+      @select="onManualFoodSelected"
+    />
   </view>
 </template>
 
@@ -99,11 +144,15 @@ import { useRecommend } from '@/composables/useRecommend'
 import { usePreferenceStore } from '@/stores/modules/preference'
 import { useBudgetStore } from '@/stores/modules/budget'
 import { useRecordStore } from '@/stores/modules/record'
+import { useFoodStore } from '@/stores/modules/food'
 import { mealTypeLabel, today } from '@/utils/date'
+import { MEAL_TYPES } from '@/config/constants'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdWheel from '@/components/recommend/fd-wheel.vue'
 import FdFoodResult from '@/components/recommend/fd-food-result.vue'
 import FdExcludeTags from '@/components/recommend/fd-exclude-tags.vue'
+import FdModal from '@/components/common/fd-modal.vue'
+import FdFoodPicker from '@/components/common/fd-food-picker.vue'
 
 const {
   excludedCategories,
@@ -125,7 +174,40 @@ const {
 const prefStore = usePreferenceStore()
 const budgetStore = useBudgetStore()
 const recordStore = useRecordStore()
+const foodStore = useFoodStore()
 const targetIndex = ref(0)
+
+// 手动记录
+const showManualRecord = ref(false)
+const showManualPicker = ref(false)
+const manualFood = ref(null)
+const manualForm = ref({ foodId: null, mealType: 'lunch', cost: '' })
+
+function onManualFoodSelected(food) {
+  manualFood.value = food
+  manualForm.value.foodId = food.id
+  if (!manualForm.value.cost && food.priceRange) {
+    manualForm.value.cost = String(Math.round((food.priceRange[0] + food.priceRange[1]) / 2))
+  }
+}
+
+async function submitManualRecord() {
+  if (!manualFood.value) {
+    uni.showToast({ title: '请选择食物', icon: 'none' })
+    return
+  }
+  await recordStore.add({
+    foodId: manualFood.value.id,
+    foodName: manualFood.value.name,
+    date: today(),
+    mealType: manualForm.value.mealType,
+    cost: Number(manualForm.value.cost) || 0,
+    nutrition: manualFood.value.nutrition || [],
+  })
+  manualFood.value = null
+  manualForm.value = { foodId: null, mealType: 'lunch', cost: '' }
+  uni.showToast({ title: '已记录 ✅', icon: 'none' })
+}
 
 // 今日总结：晚上20点后且当天有记录时展示
 const showDaySummary = computed(() => {
@@ -190,6 +272,7 @@ function onBlacklist(foodId) {
 
 onMounted(async () => {
   await init()
+  await foodStore.load()
 })
 </script>
 
@@ -330,5 +413,80 @@ onMounted(async () => {
   text-align: center;
   padding: $fd-space-base;
   font-size: $fd-font-sm;
+}
+
+/* 浮动手动记录按钮 */
+.float-record-btn {
+  position: fixed;
+  right: 40rpx;
+  bottom: 160rpx;
+  background: $fd-primary;
+  color: #fff;
+  border-radius: 56rpx;
+  padding: 20rpx 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  box-shadow: 0 8rpx 24rpx rgba($fd-primary, 0.4);
+  z-index: 100;
+  &:active { opacity: 0.85; transform: scale(0.96); }
+}
+.float-record-icon { font-size: 36rpx; }
+.float-record-label {
+  font-size: $fd-font-sm;
+  font-weight: 600;
+}
+
+/* 手动记录弹窗表单 */
+.form-item { margin-bottom: $fd-space-base; }
+.form-label {
+  display: block;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  margin-bottom: 8rpx;
+}
+.form-input {
+  width: 100%;
+  height: 72rpx;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 0 $fd-space-sm;
+  font-size: $fd-font-base;
+}
+.food-select-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 0 $fd-space-sm;
+  height: 72rpx;
+  background: $fd-bg;
+  &:active { border-color: $fd-primary; }
+}
+.food-select-name {
+  font-size: $fd-font-base;
+  color: $fd-text;
+  font-weight: 500;
+}
+.food-select-placeholder {
+  font-size: $fd-font-base;
+  color: $fd-text-light;
+}
+.food-select-arrow {
+  font-size: $fd-font-lg;
+  color: $fd-text-light;
+}
+.meal-types { display: flex; gap: $fd-space-xs; }
+.meal-type-btn {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  border-radius: $fd-radius-round;
+  border: 2rpx solid $fd-border;
+  font-size: $fd-font-sm;
+  color: $fd-text-secondary;
+  &--active { background: $fd-primary; color: #fff; border-color: $fd-primary; }
+  &:active { opacity: 0.8; }
 }
 </style>

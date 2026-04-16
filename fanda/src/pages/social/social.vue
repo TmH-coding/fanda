@@ -98,7 +98,12 @@
       </view>
       <view class="form-item">
         <text class="form-label">地点</text>
-        <input class="form-input" v-model="form.location" placeholder="在哪吃" />
+        <view class="location-picker" @tap="pickLocation">
+          <text :class="form.location ? 'location-text' : 'location-placeholder'">
+            {{ form.location || '点击选择地点…' }}
+          </text>
+          <text class="location-icon">📍</text>
+        </view>
       </view>
       <view class="form-item">
         <text class="form-label">人数上限</text>
@@ -211,6 +216,36 @@ function onCreate() {
   showCreate.value = false
   form.value = { title: '', time: '', location: '', maxPeople: '4' }
   uni.showToast({ title: '发起成功 🎉', icon: 'none' })
+}
+
+function pickLocation() {
+  // #ifndef H5
+  uni.chooseLocation({
+    success: (res) => {
+      // 组合成"名称（地址）"形式，名称为空时只用地址
+      const name = res.name || ''
+      const addr = res.address || ''
+      form.value.location = name ? (addr ? `${name}（${addr}）` : name) : addr
+    },
+    fail: () => {
+      // 用户取消或不支持时，保持原值，不弹 toast 打断体验
+    },
+  })
+  // #endif
+  // #ifdef H5
+  // H5 不支持 chooseLocation，弹出文字输入框作为降级方案
+  uni.showModal({
+    title: '输入地点',
+    editable: true,
+    placeholderText: '请输入地点名称',
+    content: form.value.location,
+    success: (res) => {
+      if (res.confirm && res.content) {
+        form.value.location = res.content
+      }
+    },
+  })
+  // #endif
 }
 
 onMounted(async () => {
@@ -416,5 +451,30 @@ onMounted(async () => {
   border-radius: $fd-radius-sm;
   padding: 0 $fd-space-sm;
   font-size: $fd-font-base;
+}
+.location-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72rpx;
+  border: 2rpx solid $fd-border;
+  border-radius: $fd-radius-sm;
+  padding: 0 $fd-space-sm;
+  background: $fd-bg;
+  &:active { border-color: $fd-primary; }
+}
+.location-text {
+  font-size: $fd-font-base;
+  color: $fd-text;
+  flex: 1;
+}
+.location-placeholder {
+  font-size: $fd-font-base;
+  color: $fd-text-light;
+  flex: 1;
+}
+.location-icon {
+  font-size: $fd-font-md;
+  flex-shrink: 0;
 }
 </style>

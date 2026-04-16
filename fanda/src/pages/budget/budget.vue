@@ -64,6 +64,34 @@
       </view>
     </view>
 
+    <!-- 近7天消费折线图 -->
+    <view class="week-chart fd-card">
+      <text class="section-title">近7天消费</text>
+      <view class="chart-area">
+        <!-- Y轴标签 -->
+        <view class="chart-y-labels">
+          <text class="chart-y-label" v-for="(v, i) in yLabels" :key="i">{{ v }}</text>
+        </view>
+        <!-- 折线图 SVG -->
+        <view class="chart-svg-wrap">
+          <!-- 使用 canvas 绘制折线图 -->
+          <canvas canvas-id="weekChartCanvas" class="chart-canvas" />
+        </view>
+      </view>
+      <!-- X轴日期 -->
+      <view class="chart-x-labels">
+        <text v-for="d in weekDays" :key="d.date" class="chart-x-label">{{ d.label }}</text>
+      </view>
+      <!-- 金额点提示 -->
+      <view class="chart-values">
+        <view v-for="d in weekDays" :key="d.date" class="chart-value-item">
+          <text class="chart-value-num" :class="d.amount > 0 ? 'chart-value--active' : ''">
+            {{ d.amount > 0 ? '¥' + d.amount : '-' }}
+          </text>
+        </view>
+      </view>
+    </view>
+
     <!-- 设置预算 -->
     <view class="set-budget fd-card">
       <text class="section-title">设置预算</text>
@@ -96,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useBudgetStore } from '@/stores/modules/budget'
 import { mealTypeLabel } from '@/utils/date'
 import dayjs from 'dayjs'
@@ -197,9 +225,115 @@ function saveBudget() {
   }
 }
 
+// ── 近7天折线图 ───────────────────────────────────────
+const weekDays = computed(() => {
+  const result = []
+  for (let i = 6; i >= 0; i--) {
+    const d = dayjs().subtract(i, 'day')
+    const dateStr = d.format('YYYY-MM-DD')
+    const amount = budgetStore.monthlyExpenses
+      .filter(e => e.date === dateStr)
+      .reduce((s, e) => s + e.amount, 0)
+    result.push({ date: dateStr, label: d.format('M/D'), amount: Math.round(amount) })
+  }
+  return result
+})
+
+const yLabels = computed(() => {
+  const amounts = weekDays.value.map(d => d.amount)
+  const maxVal = Math.max(...amounts, budgetStore.dailySuggestion, 1)
+  const step = Math.ceil(maxVal / 3 / 10) * 10
+  return [step * 3, step * 2, step, 0]
+})
+
+function drawWeekChart() {
+  const days = weekDays.value
+  const amounts = days.map(d => d.amount)
+  const maxVal = Math.max(...amounts, budgetStore.dailySuggestion || 1, 1)
+  const yMax = Math.ceil(maxVal / 10) * 10 * 1.1
+
+  const W = 280, H = 100  // canvas logical px (rpx / 2 approximately)
+  const padL = 10, padR = 10, padT = 10, padB = 10
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+  const n = days.length
+
+  const ctx = uni.createCanvasContext('weekChartCanvas')
+  ctx.clearRect(0, 0, W, H)
+
+  // 网格线
+  ctx.setStrokeStyle('#f0f0f0')
+  ctx.setLineWidth(1)
+  ;[0.25, 0.5, 0.75, 1].forEach(pct => {
+    const y = padT + chartH * pct
+    ctx.beginPath()
+    ctx.moveTo(padL, y)
+    ctx.lineTo(W - padR, y)
+    ctx.stroke()
+  })
+
+  // 日均建议线（虚线）
+  if (budgetStore.dailySuggestion > 0) {
+    const sy = padT + chartH * (1 - budgetStore.dailySuggestion / yMax)
+    ctx.setStrokeStyle('rgba(255,107,107,0.4)')
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.moveTo(padL, sy)
+    ctx.lineTo(W - padR, sy)
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  // 计算点坐标
+  const pts = days.map((d, i) => ({
+    x: padL + (i / (n - 1)) * chartW,
+    y: padT + chartH * (1 - d.amount / yMax),
+  }))
+
+  // 渐变填充区域
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + chartH)
+  grad.addColorStop(0, 'rgba(255,107,107,0.18)')
+  grad.addColorStop(1, 'rgba(255,107,107,0)')
+  ctx.setFillStyle(grad)
+  ctx.beginPath()
+  ctx.moveTo(pts[0].x, pts[0].y)
+  for (let i = 1; i < pts.length; i++) {
+    const cp1x = (pts[i - 1].x + pts[i].x) / 2
+    ctx.bezierCurveTo(cp1x, pts[i - 1].y, cp1x, pts[i].y, pts[i].x, pts[i].y)
+  }
+  ctx.lineTo(pts[pts.length - 1].x, padT + chartH)
+  ctx.lineTo(pts[0].x, padT + chartH)
+  ctx.closePath()
+  ctx.fill()
+
+  // 折线
+  ctx.setStrokeStyle('#FF6B6B')
+  ctx.setLineWidth(2)
+  ctx.beginPath()
+  ctx.moveTo(pts[0].x, pts[0].y)
+  for (let i = 1; i < pts.length; i++) {
+    const cp1x = (pts[i - 1].x + pts[i].x) / 2
+    ctx.bezierCurveTo(cp1x, pts[i - 1].y, cp1x, pts[i].y, pts[i].x, pts[i].y)
+  }
+  ctx.stroke()
+
+  // 数据点
+  pts.forEach((pt, i) => {
+    if (days[i].amount > 0) {
+      ctx.setFillStyle('#FF6B6B')
+      ctx.beginPath()
+      ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  })
+
+  ctx.draw()
+}
+
 onMounted(async () => {
   await budgetStore.load()
   monthlyInput.value = String(budgetStore.budget.monthly)
+  nextTick(() => drawWeekChart())
 })
 </script>
 
@@ -373,5 +507,59 @@ onMounted(async () => {
   color: $fd-text-light;
   padding: 0 8rpx;
   &:active { color: $fd-danger; }
+}
+
+/* 近7天折线图 */
+.week-chart { margin: 0 $fd-space-md $fd-space-base; }
+.chart-area {
+  display: flex;
+  align-items: stretch;
+  height: 200rpx;
+  margin-bottom: 4rpx;
+}
+.chart-y-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8rpx 0;
+  width: 64rpx;
+  flex-shrink: 0;
+}
+.chart-y-label {
+  font-size: 18rpx;
+  color: $fd-text-light;
+  text-align: right;
+  padding-right: 8rpx;
+}
+.chart-svg-wrap {
+  flex: 1;
+}
+.chart-canvas {
+  width: 100%;
+  height: 200rpx;
+}
+.chart-x-labels {
+  display: flex;
+  margin-left: 64rpx;
+}
+.chart-x-label {
+  flex: 1;
+  text-align: center;
+  font-size: 18rpx;
+  color: $fd-text-light;
+}
+.chart-values {
+  display: flex;
+  margin-left: 64rpx;
+  margin-top: 4rpx;
+}
+.chart-value-item {
+  flex: 1;
+  text-align: center;
+}
+.chart-value-num {
+  font-size: 18rpx;
+  color: $fd-text-light;
+  &.chart-value--active { color: $fd-primary; font-weight: 600; }
 }
 </style>

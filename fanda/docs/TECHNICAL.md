@@ -2,7 +2,7 @@
 
 > 记录当前已实现的完整功能与架构，供开发维护参考。
 >
-> 最后更新：2026-04-16（v2.1）
+> 最后更新：2026-04-16（v2.2）
 
 ---
 
@@ -96,7 +96,6 @@ src/
 │   ├── offlineQueue.js          # 离线操作队列（enqueue/flush/peek）
 │   ├── date.js                  # 日期工具、mealTypeLabel()
 │   └── websocket.js             # createSocialSocket WebSocket 封装
-├── config/
 │   ├── index.js                 # dataMode 配置
 │   ├── theme.js                 # spicyLevels 等常量
 │   └── constants.js             # FOOD_CATEGORIES / NUTRITION_TYPES / MEAL_TYPES
@@ -363,6 +362,8 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - **今日去重** — 优先排除当日已记录的菜品；若去除后候选数 < 3，则回退到完整候选池
 - **预算感知价格过滤** — 超支时仅显示均价 ≤ 预算日均 × 0.8 的菜品；未超支时阈值为 1.5 倍
 - **菜品详情弹窗** — 推荐结果卡片中菜品名旁显示 ℹ️，点击弹出底部抽屉，展示分类/价格区间/适合餐次/营养标签/过敏原/特色标签；弹窗内支持直接收藏或确认选择
+- **分享图生成** — 详情弹窗底部"📤 生成分享图"按钮，Canvas 绘制食物卡片（品牌色块 + 名称 + 分类/价格 + 营养标签）并保存到相册；权限拒绝时降级为 previewImage
+- **浮动手动记录** — 页面右下角固定"✏️ 手动记录"按钮，点击弹出录入弹窗（fd-food-picker 选食物 + 餐次切换 + 花费输入），不依赖转盘即可快速录入
 - "就吃这个"直接记录到当日对应餐次
 
 ### 7.3 饮食日历
@@ -383,11 +384,13 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 环形进度图展示消耗比例
 - 每日建议额度计算
 - 消费流水列表
+- **近 7 天消费折线图** — Canvas 绘制平滑贝塞尔曲线（含渐变填充区域），虚线标注日均建议上限；X 轴日期 + 各日金额标注
 
 ### 7.5 拼饭社交
 
 - `pages/social/social.vue`
 - 发起拼饭（标题/地点/时间/人数/候选餐厅）
+- **地点选择** — 点击地点字段调用 `uni.chooseLocation` 唤起系统地图选点，选中后自动填充"名称（地址）"；H5 端降级为 `showModal` 文字输入
 - 投票选餐（每人一票，防重投）
 - 加入/退出/解散
 - **拼饭留言板**（远程模式）— 每个拼饭卡片下方可展开留言板，懒加载（点击"查看留言 ›"触发），发送留言实时追加，支持最新 30 条消息
@@ -430,6 +433,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 
 - `pages/friends/friends.vue`
 - 四个 Tab：**动态** / 好友 / 请求 / 搜索
+- **本周 vs 上周对比卡** — 动态 Tab 顶部展示我的本周/上周花费及差值（红↑绿↓），以及好友本周出现频率最高的菜品名
 - 动态：好友最近 30 条用餐记录，含昵称/头像/菜品/费用/评分（rating 字段由后端 FriendController 注入到 feed 响应 Map）
 - 搜索：按用户名/昵称模糊搜，显示当前关系状态（none/pending/accepted）
 - 好友请求：发送/接受/拒绝
@@ -463,6 +467,35 @@ for (const ach of newAchs) {
 ```
 
 > 动态 import 是规避 Pinia store 循环依赖的标准做法：record → achievement → record 的静态 import 链会导致模块初始化死锁。
+
+### 7.12 fd-food-picker 搜索历史与热门推荐
+
+`components/common/fd-food-picker.vue`
+
+无搜索词时进入"发现模式"，展示两个区块：
+
+- **最近选择** — 用 `uni.storage['fd_food_pick_history']` 存储最多 8 条历史，点击历史标签直接填充搜索词；右上角"清除"一键删除
+- **🔥 热门推荐** — 用 `uni.storage['fd_food_pick_freq']` 记录每种食物的选择次数，按频次降序展示前 5 名，行末显示"N 次"
+
+每次通过 `select()` 确认选择时，同步 `saveHistory(name)` 和 `incFreq(foodId)`。底部的分类 Tab 始终可见，点击任意分类自动切换到筛选视图。
+
+### 7.13 AI 系统 Prompt 本地上下文增强
+
+`pages/ai/ai.vue`
+
+每次发送消息前，`buildLocalContext()` 从本地 store 提取三类信息并追加到消息末尾（气泡只显示原始文字，附加内容仅发给后端）：
+
+| 字段 | 来源 | 说明 |
+| --- | --- | --- |
+| 最常吃 | `recordStore.records` 按 `foodName` 频次统计 Top 5 | 帮助 AI 了解饮食习惯 |
+| 不太喜欢 | rating ≤ 2 的记录去重，取前 3 | 推荐时主动回避低评分食物 |
+| 预算状态 | `budgetStore.budget.monthly` / `monthlyTotal` | 让 AI 推荐符合余额的选项 |
+
+附加格式示例：
+
+```text
+[我的饮食背景：【最常吃】黄焖鸡(8次)、麻辣烫(6次)；【不太喜欢】螺蛳粉（评分偏低）；【本月预算】¥1500，已花 ¥820，剩余 ¥680]
+```
 
 ---
 
@@ -563,8 +596,19 @@ budget: { addExpense: ..., removeExpense: ... }
 
 ---
 
-*文档版本: v2.1*
+*文档版本: v2.2*
 *更新日期: 2026-04-16*
+
+### 变更记录（v2.2）
+
+- 新增 7.12 首页浮动手动记录按钮
+- 新增 7.13 转盘结果分享图（Canvas）
+- 7.2 转盘推荐：新增浮动录入入口（手动记录弹窗 + fd-food-picker 集成）
+- fd-food-picker：新增搜索历史（uni.storage 持久化）+ 热门菜品（频次排序）
+- budget.vue：新增近 7 天消费折线图（Canvas 贝塞尔曲线）
+- friends.vue：动态 Tab 顶部新增本周 vs 上周消费对比卡片
+- social.vue：地点字段改用 uni.chooseLocation（H5 降级为 showModal 文字输入）
+- ai.vue：sendMessage 前调用 buildLocalContext() 附加用户饮食背景（最常吃食物、低评分食物、预算余额）
 
 ### 变更记录（v2.1）
 

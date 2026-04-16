@@ -142,9 +142,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { post, get, del } from '@/utils/http'
 import { getToken } from '@/utils/http'
+import { useRecordStore } from '@/stores/modules/record'
+import { useBudgetStore } from '@/stores/modules/budget'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 
 const messages = ref([])
@@ -160,6 +162,41 @@ const budgetAdvice = ref('')
 const photoResult = ref('')
 const scene = ref('lunch')
 
+const recordStore = useRecordStore()
+const budgetStore = useBudgetStore()
+
+// ── 构建增强的本地上下文（发送前附加到 message） ─────────
+function buildLocalContext() {
+  try {
+    const records = recordStore.records || []
+    // 最常吃的食物（按名称统计频次，取前5）
+    const foodFreq = {}
+    records.forEach(r => { if (r.foodName) foodFreq[r.foodName] = (foodFreq[r.foodName] || 0) + 1 })
+    const topFoods = Object.entries(foodFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => `${name}(${count}次)`)
+
+    // 评分最低的食物（rating 1-2 且有名称）
+    const lowRated = records
+      .filter(r => r.rating && r.rating <= 2 && r.foodName)
+      .map(r => r.foodName)
+    const uniqueLowRated = [...new Set(lowRated)].slice(0, 3)
+
+    // 本月预算状态
+    const budget = budgetStore.budget?.monthly || 0
+    const spent = budgetStore.monthlyTotal || 0
+    const remaining = budget - spent
+
+    const lines = []
+    if (topFoods.length) lines.push(`【最常吃】${topFoods.join('、')}`)
+    if (uniqueLowRated.length) lines.push(`【不太喜欢】${uniqueLowRated.join('、')}（评分偏低）`)
+    if (budget > 0) lines.push(`【本月预算】¥${budget}，已花 ¥${Math.round(spent)}，剩余 ¥${Math.round(remaining)}`)
+
+    return lines.length ? `\n\n[我的饮食背景：${lines.join('；')}]` : ''
+  } catch { return '' }
+}
+
 const scenes = [
   { key: 'breakfast', label: '早餐' },
   { key: 'lunch', label: '午餐' },
@@ -170,6 +207,9 @@ async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || streaming.value) return
 
+  const context = buildLocalContext()
+  const messageWithContext = context ? text + context : text
+
   messages.value.push({ role: 'user', content: text })
   inputText.value = ''
   scrollToBottom()
@@ -179,7 +219,7 @@ async function sendMessage() {
 
   try {
     const token = getToken()
-    await streamChat(text, token)
+    await streamChat(messageWithContext, token)
   } catch (e) {
     messages.value.push({ role: 'assistant', content: '小饭暂时不在线，请稍后再试 😅' })
   } finally {
@@ -403,6 +443,11 @@ function fileToBase64(filePath) {
 function scrollToBottom() {
   setTimeout(() => { scrollTop.value = 999999 }, 50)
 }
+
+onMounted(() => {
+  recordStore.load()
+  budgetStore.load()
+})
 </script>
 
 <style lang="scss" scoped>
