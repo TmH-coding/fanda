@@ -75,6 +75,8 @@ function labelStyle(index) {
 
 function onTap() {
   if (isAnimating.value) return
+  // 轻触觉反馈
+  try { uni.vibrateShort({ type: 'medium' }) } catch (e) { /* 不支持则忽略 */ }
   emit('spin')
 }
 
@@ -89,6 +91,8 @@ watch(() => props.spinning, (val) => {
 
     setTimeout(() => {
       isAnimating.value = false
+      // 结果出现时短震动
+      try { uni.vibrateShort({ type: 'light' }) } catch (e) { /* 不支持则忽略 */ }
       emit('spinEnd')
     }, 4200)
   }

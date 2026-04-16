@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { getService } from '@/services/factory'
 import { today } from '@/utils/date'
+import { enqueue } from '@/utils/offlineQueue'
 
 export const useRecordStore = defineStore('record', {
   state: () => ({
@@ -64,12 +65,21 @@ export const useRecordStore = defineStore('record', {
     },
     async add(record) {
       const service = getService('record')
-      await service.save(record)
+      try {
+        await service.save(record)
+      } catch (e) {
+        // 仅在网络不可用时入队，服务端错误不入队
+        if (e?.isOffline) enqueue('add', 'record', record)
+      }
       this.records.push(record)
     },
     async remove(id) {
       const service = getService('record')
-      await service.delete(id)
+      try {
+        await service.delete(id)
+      } catch (e) {
+        if (e?.isOffline) enqueue('remove', 'record', id)
+      }
       this.records = this.records.filter((r) => r.id !== id)
     },
   },

@@ -48,7 +48,9 @@ function request(url, method, data) {
         resolve(body.data)
       },
       fail(err) {
-        uni.showToast({ title: '网络错误', icon: 'none' })
+        // 标记为离线错误，方便上层决定是否入队
+        err.isOffline = true
+        uni.showToast({ title: '网络不可用，操作将在联网后同步', icon: 'none', duration: 2000 })
         reject(err)
       }
     })

@@ -52,35 +52,38 @@
 fanda/src/
 ├── pages/
 │   ├── index/index.vue             # 首页-转盘推荐（加权随机、今日总结卡）
-│   ├── calendar/calendar.vue       # 饮食日历（记录查看/删除）
+│   ├── calendar/calendar.vue       # 饮食日历（骨架屏、记录查看/删除）
 │   ├── budget/budget.vue           # 预算管家（支出删除）
-│   ├── social/social.vue           # 拼饭广场
+│   ├── social/social.vue           # 拼饭广场（骨架屏）
 │   ├── social-detail/              # 拼饭详情（投票、AA账单、实时聊天、活动评价）
 │   ├── friends/friends.vue         # 好友中心（搜索/申请/好友列表）
 │   ├── profile/profile.vue         # 个人中心
-│   ├── ai/ai.vue                   # AI 饮食顾问（多功能）
+│   ├── ai/ai.vue                   # AI 饮食顾问（多功能；小程序SSE降级）
 │   ├── stats/stats.vue             # 饮食统计报告
 │   └── login/login.vue             # 登录页
 │
 ├── components/
 │   ├── recommend/
-│   │   ├── fd-wheel.vue            # 转盘组件
+│   │   ├── fd-wheel.vue            # 转盘组件（触觉反馈 vibrateShort）
 │   │   ├── fd-food-result.vue      # 推荐结果（含推荐理由气泡）
 │   │   └── fd-exclude-tags.vue     # 排除标签
 │   ├── common/
 │   │   ├── fd-nav-bar.vue
-│   │   └── fd-empty.vue
+│   │   ├── fd-empty.vue
+│   │   └── fd-skeleton.vue         # 骨架屏组件（shimmer 动画，rows 参数）
 │
 ├── composables/
 │   └── useRecommend.js             # 加权推荐算法、推荐理由生成
 │
 ├── stores/modules/
-│   ├── food.js / record.js / budget.js
+│   ├── food.js                     # 菜品（离线缓存兜底，24h TTL + refresh()）
+│   ├── record.js / budget.js
 │   ├── preference.js / achievement.js
 │   └── auth.js                     # JWT 登录态管理
 │
 ├── utils/
-│   ├── http.js                     # Axios 封装（JWT 拦截器）
+│   ├── http.js                     # Axios 封装（JWT 拦截器；isOffline 错误标记）
+│   ├── offlineQueue.js             # 离线操作队列（localStorage持久化，flush 回放）
 │   ├── websocket.js                # WebSocket 工具（指数退避断线重连）
 │   └── storage.js / date.js / format.js
 │
@@ -335,17 +338,96 @@ Store（更新状态 + 调用 service 持久化）
 | AI 记忆 | ConcurrentHashMap 自维护 | 绕开 spring-ai-alibaba 版本 Memory API 兼容问题 |
 | 图片识别 | REST 直调 DashScope | qwen-vl 独立于 Spring AI ChatClient，直接调用更灵活 |
 | 周报持久化 | `fd_weekly_report` + 唯一索引 | 幂等生成，重复调用不产生重复记录 |
-| SSE 流式 | 原生 fetch（H5） | uni.request 不支持 SSE，fetch 在 H5 模式下完整支持 |
+| SSE 流式 | 原生 fetch（H5）/ POST 降级（小程序） | uni.request 不支持 SSE；小程序平台条件编译降级为普通请求 |
 | JWT | access(2h) + refresh(7d) | 无感刷新，减少重新登录体验损耗 |
 | Redis 缓存 | Spring Cache + 分区 TTL | 菜品/偏好高频读少写，缓存命中显著降低 DB 压力 |
 | AI 限流 | 滑动窗口令牌桶（内存） | 无外部依赖，单实例适用，保护 DashScope 配额 |
 | WS 重连 | 指数退避（最多5次） | 避免断网后瞬间洪泛重连，上限防止无效持续重试 |
 | 好友搜索防枚举 | 频率限制 + 最短关键词 2字 | 防止遍历全量用户，兼顾性能与安全 |
 | 活动评价 | 唯一索引 `(group_id, user_id)` | 保证每人只能评价一次，DB 层幂等兜底 |
+| 离线写操作 | offlineQueue.js + localStorage | 网络断开时本地仍可操作，前台恢复后自动 flush 回放 |
+| 菜品离线兜底 | localStorage 缓存 24h TTL | 无网络时转盘仍可使用缓存菜品，提示数据新鲜度 |
+| 触觉反馈 | uni.vibrateShort（try/catch 兜底） | 转盘拨动/结果出现有震动感，不支持平台静默忽略 |
+| 骨架屏 | fd-skeleton（shimmer 动画） | 数据加载中展示占位动画，避免白屏等待感 |
+| 小程序图片权限 | getSetting + openSetting 引导 | 条件编译区分平台，小程序需显式申请相册/相机授权 |
 
 ---
 
-## 九、环境配置
+## 九、体验层优化
+
+### 离线记录队列同步
+
+```text
+用户操作（add/remove record）
+        │
+        ▼
+record.js → service.save() / service.delete()
+        │
+    失败且 err.isOffline?
+        │
+    是 → offlineQueue.enqueue(type, 'record', payload)
+        │              ↓
+        │       localStorage 持久化
+        │
+        ▼
+App.vue onShow（切换前台）
+        │
+        ▼
+offlineQueue.flush({ record: { add, remove } })
+        │
+    逐条调用 service，成功则 dequeue
+        │
+        ▼
+uni.showToast("已同步 N 条离线记录")
+```
+
+**关键细节：**
+
+- `http.js` 的 `fail` 回调在错误对象上附加 `isOffline: true`，与服务端返回的业务错误区分
+- 本地状态（`this.records`）无论网络是否成功都立即更新，保证 UI 响应
+- 回放失败的条目保留在队列，等下次 `onShow` 重试
+
+### 菜品数据离线兜底
+
+```text
+food.js load()
+        │
+    service.getAll() 成功？
+        │
+    是 → storage.set('food_cache', foods)   ← 写入本地缓存
+        │   storage.set('food_cache_ts', Date.now())
+        │
+    否 → storage.get('food_cache') 有缓存？
+              │
+          是 → 使用缓存，showToast 提示数据新鲜度
+          否 → 保持 loaded=false，showToast 提示网络错误
+```
+
+- 缓存 TTL 24 小时（仅作展示参考，每次联网都会刷新）
+- `refresh()` 方法重置 `loaded = false` 后重新拉取，强制更新缓存
+
+### 小程序平台适配
+
+| 功能 | H5 | 小程序 |
+| --- | --- | --- |
+| AI 对话流式 | `fetch` + `ReadableStream` SSE | `POST /api/ai/chat` 普通请求，一次性返回 |
+| 图片选取权限 | 直接 `uni.chooseImage` | 先 `getSetting` 检查 `scope.album`，未授权引导 `openSetting` |
+| 图片转 base64 | `fetch(blob)` + `FileReader` | `uni.getFileSystemManager().readFile(encoding:'base64')` |
+
+所有平台差异均通过 `// #ifdef H5` / `// #ifndef H5` 条件编译隔离，不影响构建产物体积。
+
+### 交互细节打磨
+
+| 组件 | 优化 |
+| --- | --- |
+| `fd-skeleton.vue` | shimmer 渐变动画骨架屏，`rows` 参数控制行数，宽度随行号自动变化 |
+| `calendar.vue` | `recordLoading` ref 控制骨架屏显示，`await recordStore.load()` 完成后隐藏 |
+| `social.vue` | `listLoading` ref + 骨架屏，拼饭列表加载完成前不渲染空态 |
+| `fd-wheel.vue` | 点击 GO 时 `vibrateShort('medium')`，结果定格时 `vibrateShort('light')`；try/catch 静默处理不支持的平台 |
+
+---
+
+## 十、环境配置
 
 ```yaml
 # application.yml 关键配置
@@ -383,6 +465,6 @@ jwt:
 
 ---
 
-*文档版本: v3.0*
+*文档版本: v4.0*
 *更新日期: 2026-04-16*
-*主要变更: 社交功能（好友关系、活动评价、群聊）、工程优化（Redis 缓存、AI 限流、WS 断线重连、图片校验、搜索防枚举）*
+*主要变更: 体验层优化（离线队列同步、菜品离线兜底、小程序平台适配、骨架屏 + 触觉反馈）*

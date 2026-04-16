@@ -207,7 +207,10 @@ async function clearHistory() {
 }
 
 async function streamChat(message, token) {
-  const response = await fetch('/api/ai/chat', {
+  // #ifdef H5
+  // H5 平台：原生 fetch + ReadableStream 实现 SSE 流式接收
+  const baseUrl = (await import('@/config')).default.apiBaseUrl || ''
+  const response = await fetch(baseUrl + '/api/ai/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -243,6 +246,18 @@ async function streamChat(message, token) {
     messages.value.push({ role: 'assistant', content: fullText })
   }
   streamingText.value = ''
+  // #endif
+
+  // #ifndef H5
+  // 小程序平台：SSE 不支持，降级为普通 POST 请求一次性获取回复
+  const { post: httpPost } = await import('@/utils/http')
+  const result = await httpPost('/api/ai/chat', { message })
+  const reply = typeof result === 'string' ? result : (result?.content || '小饭暂时无法回复')
+  streamingText.value = reply
+  await new Promise(resolve => setTimeout(resolve, 30)) // 让 UI 刷新一帧
+  messages.value.push({ role: 'assistant', content: reply })
+  streamingText.value = ''
+  // #endif
 }
 
 async function startRecommend() {
@@ -305,6 +320,33 @@ function changeScene(key) {
 
 // ── 图片识别 ──────────────────────────────────────────
 function pickImage() {
+  // #ifndef H5
+  // 小程序：先检查相册/相机权限，再选图
+  uni.getSetting({
+    success(settingRes) {
+      const albumAuth = settingRes.authSetting['scope.album']
+      if (albumAuth === false) {
+        uni.showModal({
+          title: '需要相册权限',
+          content: '请在设置中开启相册权限以选择图片',
+          confirmText: '去设置',
+          success(modalRes) {
+            if (modalRes.confirm) uni.openSetting({})
+          },
+        })
+        return
+      }
+      doChooseImage()
+    },
+    fail: doChooseImage,
+  })
+  // #endif
+  // #ifdef H5
+  doChooseImage()
+  // #endif
+}
+
+function doChooseImage() {
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],

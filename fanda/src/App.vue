@@ -1,5 +1,25 @@
 <script>
 import config from '@/config'
+import { flush, queueSize } from '@/utils/offlineQueue'
+import { getService } from '@/services/factory'
+
+async function flushOfflineQueue() {
+  if (queueSize() === 0) return
+  try {
+    const recordService = getService('record')
+    const count = await flush({
+      record: {
+        add:    (payload) => recordService.save(payload),
+        remove: (payload) => recordService.delete(payload),
+      },
+    })
+    if (count > 0) {
+      uni.showToast({ title: `已同步 ${count} 条离线记录`, icon: 'success' })
+    }
+  } catch (e) {
+    console.warn('[App] 离线队列回放失败', e)
+  }
+}
 
 export default {
   onLaunch() {
@@ -14,6 +34,10 @@ export default {
   },
   onShow() {
     console.log('饭搭 App Show')
+    // 每次前台时尝试回放离线队列（仅远程模式有意义）
+    if (config.dataMode === 'remote') {
+      flushOfflineQueue()
+    }
   },
   onHide() {
     console.log('饭搭 App Hide')

@@ -8,11 +8,12 @@
     </view>
 
     <!-- 拼饭列表 -->
-    <view v-if="socialStore.openGroups.length === 0">
+    <fd-skeleton v-if="listLoading" :rows="5" />
+    <view v-else-if="socialStore.openGroups.length === 0">
       <fd-empty icon="🤝" text="暂时没有拼饭局" btn-text="发起一个" @action="showCreate = true" />
     </view>
 
-    <view v-for="group in socialStore.openGroups" :key="group.id" class="group-card fd-card" @tap="goDetail(group.id)">
+    <view v-if="!listLoading" v-for="group in socialStore.openGroups" :key="group.id" class="group-card fd-card" @tap="goDetail(group.id)">
       <view class="group-header">
         <text class="group-avatar">{{ group.avatar }}</text>
         <view class="group-creator">
@@ -81,9 +82,11 @@ import { generateId } from '@/utils/format'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
 import FdModal from '@/components/common/fd-modal.vue'
+import FdSkeleton from '@/components/common/fd-skeleton.vue'
 
 const socialStore = useSocialStore()
 const showCreate = ref(false)
+const listLoading = ref(true)
 
 const form = ref({
   title: '',
@@ -138,6 +141,7 @@ function onCreate() {
 
 onMounted(async () => {
   await socialStore.load()
+  listLoading.value = false
 })
 </script>
 

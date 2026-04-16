@@ -25,7 +25,9 @@
     <!-- 选中日期的记录 -->
     <view class="records-section">
       <text class="records-title">{{ selectedDate }} 用餐记录</text>
-      <view v-if="dayRecords.length === 0" class="records-empty">
+      <!-- 骨架屏：数据加载中 -->
+      <fd-skeleton v-if="recordLoading" :rows="4" />
+      <view v-else-if="dayRecords.length === 0" class="records-empty">
         <fd-empty icon="📝" text="这天还没有记录哦" btn-text="去记录" @action="goRecord" />
       </view>
       <view v-for="record in dayRecords" :key="record.id" class="record-card fd-card">
@@ -52,8 +54,10 @@ import { today, mealTypeLabel, getDaysInMonth, getFirstDayOfWeek } from '@/utils
 import { NUTRITION_TYPES } from '@/config/constants'
 import FdNavBar from '@/components/common/fd-nav-bar.vue'
 import FdEmpty from '@/components/common/fd-empty.vue'
+import FdSkeleton from '@/components/common/fd-skeleton.vue'
 
 const recordStore = useRecordStore()
+const recordLoading = ref(true)
 
 const now = new Date()
 const year = ref(now.getFullYear())
@@ -125,6 +129,7 @@ function goRecord() {
 
 onMounted(async () => {
   await recordStore.load()
+  recordLoading.value = false
 })
 </script>
 
