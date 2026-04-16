@@ -402,6 +402,7 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 营养分布：各类型记录数柱状图
 - 餐次分布：早/中/晚/宵夜比例
 - **月度报告导出** — Canvas 绘制图片，保存到相册
+- **月初智能提醒** — `App.vue` 在 `onShow` 中调用 `checkMonthlyReportReminder()`；每月 1-3 日首次启动弹窗提示查看上月报告，用 `uni.storage` key `fd_monthly_reminder_YYYY_M` 去重（每月只提示一次）
 - 错误状态组件 + 重试
 
 ### 7.8 AI 饮食顾问
@@ -428,6 +429,27 @@ H5 端使用 `fetch` + `ReadableStream` 接收 SSE；小程序端回退到 `POST
 - 营养类型（多选）/ 适用餐次（多选）
 - 提交后刷新 food store，新食物立即出现在推荐候选中
 - 仅远程模式有效（`POST /api/foods`）
+
+### 7.11 成就实时触发
+
+成就检查在每次用餐记录添加后自动执行，无需手动刷新：
+
+1. `record.js` 的 `add` action 成功保存记录后，通过动态 `import()` 加载 achievement/preference store（避免循环依赖）
+2. 构建当前 stats 对象（totalRecords / streak / uniqueFoods / favCategories 等）
+3. 调用 `achStore.check(stats)` 返回新解锁成就数组
+4. 对每个新成就调用 `uni.showToast({ title: '🏆 解锁成就：${name}！', duration: 3000 })`
+
+```js
+// record.js — add action（简化示意）
+const { useAchievementStore } = await import('@/stores/modules/achievement')
+const stats = { totalRecords: this.records.length, streak: this.streak, ... }
+const newAchs = await achStore.check(stats)
+for (const ach of newAchs) {
+  uni.showToast({ title: `🏆 解锁成就：${ach.name}！`, icon: 'none', duration: 3000 })
+}
+```
+
+> 动态 import 是规避 Pinia store 循环依赖的标准做法：record → achievement → record 的静态 import 链会导致模块初始化死锁。
 
 ---
 
@@ -528,5 +550,16 @@ budget: { addExpense: ..., removeExpense: ... }
 
 ---
 
-*文档版本: v2.0*
+*文档版本: v2.1*
 *更新日期: 2026-04-16*
+
+### 变更记录（v2.1）
+
+- 新增 `fd_group_message` 表（留言板）
+- 新增 API：`GET/POST /api/social/groups/{id}/messages`、`GET/POST /api/social/groups/{id}/reviews`、`GET /api/social/groups/{id}/bill`
+- 7.2 转盘推荐：今日去重 + 预算感知价格过滤
+- 7.3 饮食日历：近 3 天营养均衡提醒
+- 7.5 拼饭社交：留言板（懒加载）
+- 7.7 数据统计报告：月初智能提醒（App.vue onShow）
+- 7.9 好友系统：feed 接口补充 rating 字段
+- 新增 7.11 成就实时触发机制（动态 import 避免循环依赖）
